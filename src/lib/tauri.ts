@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { AppInfo, Health } from '../shared/contracts'
+import type { AppInfo, Health, InboxItem } from '../shared/contracts'
 
 /** True when running inside the Tauri webview, false in plain Vite/vitest. */
 export const isTauri = (): boolean => '__TAURI_INTERNALS__' in window
@@ -11,6 +11,9 @@ export const isTauri = (): boolean => '__TAURI_INTERNALS__' in window
 export const bridge = {
   appInfo: (): Promise<AppInfo> => invoke('app_info'),
   health: (): Promise<Health> => invoke('health'),
+  inboxList: (): Promise<InboxItem[]> => invoke('inbox_list'),
+  inboxCapture: (rawText: string): Promise<InboxItem> =>
+    invoke('inbox_capture', { rawText }),
   settingsGet: (key: string): Promise<string | null> =>
     invoke('settings_get', { key }),
   settingsSet: (key: string, value: string): Promise<void> =>

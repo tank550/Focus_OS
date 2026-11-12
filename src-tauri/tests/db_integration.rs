@@ -8,11 +8,7 @@ use focus_os_lib::infrastructure::repositories::settings_repo::SettingsRepo;
 
 /// Fresh, process-unique temp DB per test.
 fn temp_database(test: &str) -> (PathBuf, PathBuf) {
-    let dir = std::env::temp_dir().join(format!(
-        "focus-os-test-{}-{}",
-        test,
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("focus-os-test-{}-{}", test, std::process::id()));
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let path = dir.join("test.db");
     let _ = std::fs::remove_file(&path); // start clean
@@ -44,7 +40,7 @@ fn migrations_apply_cleanly_and_are_idempotent() {
 fn schema_expected_tables_exist() {
     let (dir, path) = temp_database("tables");
     let pool = db::open(&path).expect("open db");
-    let mut conn = pool.get().expect("lease conn");
+    let conn = pool.get().expect("lease conn");
 
     let expected = [
         "goals",
@@ -83,6 +79,7 @@ fn schema_expected_tables_exist() {
         );
     }
 
+    drop(stmt);
     drop(conn);
     drop(pool);
     let _ = std::fs::remove_dir_all(&dir);
@@ -92,19 +89,19 @@ fn schema_expected_tables_exist() {
 fn settings_roundtrip_and_upsert() {
     let (dir, path) = temp_database("settings");
     let pool = db::open(&path).expect("open db");
-    let mut conn = pool.get().expect("lease conn");
+    let conn = pool.get().expect("lease conn");
 
-    assert!(SettingsRepo::get(&mut conn, "ai").unwrap().is_none());
+    assert!(SettingsRepo::get(&conn, "ai").unwrap().is_none());
 
-    SettingsRepo::set(&mut conn, "ai", r#"{"enabled":true}"#).unwrap();
+    SettingsRepo::set(&conn, "ai", r#"{"enabled":true}"#).unwrap();
     assert_eq!(
-        SettingsRepo::get(&mut conn, "ai").unwrap().unwrap(),
+        SettingsRepo::get(&conn, "ai").unwrap().unwrap(),
         r#"{"enabled":true}"#
     );
 
     // Upsert must overwrite, not duplicate.
-    SettingsRepo::set(&mut conn, "ai", r#"{"enabled":false}"#).unwrap();
-    let all = SettingsRepo::all(&mut conn).unwrap();
+    SettingsRepo::set(&conn, "ai", r#"{"enabled":false}"#).unwrap();
+    let all = SettingsRepo::all(&conn).unwrap();
     assert_eq!(all.len(), 1);
     assert_eq!(all["ai"], r#"{"enabled":false}"#);
 
@@ -138,7 +135,7 @@ fn wal_and_foreign_keys_are_active_on_pool_connections() {
 fn foreign_key_violations_are_typed_errors() {
     let (dir, path) = temp_database("fk");
     let pool = db::open(&path).expect("open db");
-    let mut conn = pool.get().expect("lease conn");
+    let conn = pool.get().expect("lease conn");
 
     // project_id references a non-existent project — must be rejected.
     let res = conn.execute(
@@ -172,7 +169,7 @@ fn foreign_key_violations_are_typed_errors() {
 fn check_constraints_reject_garbage_status() {
     let (dir, path) = temp_database("check");
     let pool = db::open(&path).expect("open db");
-    let mut conn = pool.get().expect("lease conn");
+    let conn = pool.get().expect("lease conn");
 
     let res = conn.execute(
         "INSERT INTO tasks (id, title, status, estimated_minutes, created_at, updated_at)
@@ -204,7 +201,7 @@ fn transaction_rollback_leaves_no_partial_rows() {
     }
     drop(conn);
 
-    let mut conn2 = pool.get().unwrap();
+    let conn2 = pool.get().unwrap();
     let count: i64 = conn2
         .query_row("SELECT COUNT(*) FROM goals", [], |r| r.get(0))
         .unwrap();

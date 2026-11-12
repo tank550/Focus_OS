@@ -4,8 +4,10 @@
 
 mod app;
 mod health;
+mod inbox;
 mod settings;
 
 pub use app::*;
 pub use health::*;
+pub use inbox::*;
 pub use settings::*;

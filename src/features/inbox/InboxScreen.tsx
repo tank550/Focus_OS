@@ -1,22 +1,21 @@
 import { Inbox as InboxIcon } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Card } from '../../components/ui/Card'
 import { EmptyState } from '../../components/ui/EmptyState'
 import { useAppStore } from '../../stores/appStore'
+import { useInboxStore } from '../../stores/inboxStore'
 
-/**
- * Inbox — the universal capture mechanism.
- * Phase 1 validates the input flow in the shell only. Phase 2 wires the
- * `inbox_capture` command: a single transactional insert with zero AI.
- */
 export function InboxScreen() {
   const [text, setText] = useState('')
   const inTauri = useAppStore((s) => s.inTauri)
+  const { items, loaded, saving, error, load, capture } = useInboxStore()
 
-  const capture = () => {
-    if (!text.trim()) return
-    // Phase 2: bridge.capture({ rawText: text.trim() }) — a single insert.
-    setText('')
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const handleCapture = async () => {
+    if (await capture(text)) setText('')
   }
 
   return (
@@ -46,24 +45,50 @@ export function InboxScreen() {
             disabled={!inTauri}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') capture()
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                void handleCapture()
+              }
             }}
           />
           <button
             data-testid="inbox-capture-button"
             className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-40"
-            onClick={capture}
-            disabled={!inTauri}
+            onClick={() => void handleCapture()}
+            disabled={!inTauri || saving || !text.trim()}
           >
-            Save
+            {saving ? 'Saving…' : 'Save'}
           </button>
         </div>
+        {error && (
+          <p role="alert" className="mt-3 text-sm text-danger">
+            {error}
+          </p>
+        )}
         <div className="mt-4">
-          <EmptyState
-            icon={<InboxIcon className="h-8 w-8" />}
-            title="No captured items"
-            hint="Raw text persists immediately. AI classification suggestions arrive asynchronously and are inspectable (Phase 4)."
-          />
+          {!loaded ? (
+            <p className="text-sm text-text-muted">Loading inbox…</p>
+          ) : items.length === 0 ? (
+            <EmptyState
+              icon={<InboxIcon className="h-8 w-8" />}
+              title="No captured items"
+              hint="Captured thoughts are saved locally and can be organized later."
+            />
+          ) : (
+            <ul className="flex flex-col gap-3">
+              {items.map((item) => (
+                <li
+                  key={item.id}
+                  className="rounded-md border border-border bg-surface-2 px-4 py-3"
+                >
+                  <p className="whitespace-pre-wrap text-sm">{item.rawText}</p>
+                  <p className="mt-2 text-xs text-text-muted">
+                    {item.kind} · {new Date(item.capturedAt).toLocaleString()}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </Card>
     </div>

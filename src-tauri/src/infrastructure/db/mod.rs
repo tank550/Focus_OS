@@ -133,9 +133,7 @@ pub fn apply_migrations(conn: &mut Connection) -> Result<usize, DbError> {
 
 /// Number of recorded migrations (health probe + tests).
 pub fn migrations_applied(conn: &mut Connection) -> Result<i64, DbError> {
-    Ok(conn.query_row("SELECT COUNT(*) FROM schema_migrations", [], |r| {
-        r.get(0)
-    })?)
+    Ok(conn.query_row("SELECT COUNT(*) FROM schema_migrations", [], |r| r.get(0))?)
 }
 
 /// Number of application tables (excluding sqlite internals + bookkeeping).

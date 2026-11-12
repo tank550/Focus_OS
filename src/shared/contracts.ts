@@ -23,6 +23,14 @@ export interface Health {
   error: string | null
 }
 
+export interface InboxItem {
+  id: string
+  rawText: string
+  kind: string
+  status: string
+  capturedAt: number
+}
+
 export interface AiSettings {
   enabled: boolean
   provider: 'nim' | 'mock'
