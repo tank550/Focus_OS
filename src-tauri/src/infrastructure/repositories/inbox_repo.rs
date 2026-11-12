@@ -49,4 +49,29 @@ impl InboxRepo {
 
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
+
+    pub fn update(
+        conn: &Connection,
+        id: &str,
+        raw_text: &str,
+        updated_at: i64,
+    ) -> Result<bool, DbError> {
+        let changed = conn.execute(
+            "UPDATE inbox_items
+             SET raw_text = ?2, updated_at = ?3
+             WHERE id = ?1 AND archived = 0 AND status != 'ARCHIVED'",
+            rusqlite::params![id, raw_text, updated_at],
+        )?;
+        Ok(changed == 1)
+    }
+
+    pub fn archive(conn: &Connection, id: &str, updated_at: i64) -> Result<bool, DbError> {
+        let changed = conn.execute(
+            "UPDATE inbox_items
+             SET archived = 1, status = 'ARCHIVED', updated_at = ?2
+             WHERE id = ?1 AND archived = 0 AND status != 'ARCHIVED'",
+            rusqlite::params![id, updated_at],
+        )?;
+        Ok(changed == 1)
+    }
 }

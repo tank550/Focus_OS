@@ -12,3 +12,17 @@ pub fn inbox_capture(state: State<'_, AppState>, raw_text: String) -> Result<Inb
 pub fn inbox_list(state: State<'_, AppState>) -> Result<Vec<InboxItem>, String> {
     inbox::list(&state).map_err(|error| error.to_string())
 }
+
+#[tauri::command]
+pub fn inbox_update(
+    state: State<'_, AppState>,
+    id: String,
+    raw_text: String,
+) -> Result<(), String> {
+    inbox::update(&state, &id, &raw_text).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn inbox_archive(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    inbox::archive(&state, &id).map_err(|error| error.to_string())
+}

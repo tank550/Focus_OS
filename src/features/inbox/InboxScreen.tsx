@@ -7,8 +7,21 @@ import { useInboxStore } from '../../stores/inboxStore'
 
 export function InboxScreen() {
   const [text, setText] = useState('')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editText, setEditText] = useState('')
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const inTauri = useAppStore((s) => s.inTauri)
-  const { items, loaded, saving, error, load, capture } = useInboxStore()
+  const {
+    items,
+    loaded,
+    saving,
+    mutating,
+    error,
+    load,
+    capture,
+    update,
+    archive,
+  } = useInboxStore()
 
   useEffect(() => {
     void load()
@@ -16,6 +29,17 @@ export function InboxScreen() {
 
   const handleCapture = async () => {
     if (await capture(text)) setText('')
+  }
+
+  const handleUpdate = async (id: string) => {
+    if (await update(id, editText)) {
+      setEditingId(null)
+      setEditText('')
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (await archive(id)) setPendingDeleteId(null)
   }
 
   return (
@@ -88,15 +112,116 @@ export function InboxScreen() {
                   key={item.id}
                   className="rounded-md border border-border bg-surface-2 px-4 py-3"
                 >
-                  <p className="whitespace-pre-wrap text-sm">{item.rawText}</p>
-                  <div className="mt-3 flex items-center justify-between gap-3 text-xs text-text-muted">
-                    <span>
-                      {item.kind === 'UNKNOWN' ? 'Unsorted note' : item.kind}
-                    </span>
-                    <time dateTime={new Date(item.capturedAt).toISOString()}>
-                      {new Date(item.capturedAt).toLocaleString()}
-                    </time>
-                  </div>
+                  {editingId === item.id ? (
+                    <div className="flex flex-col gap-3">
+                      <textarea
+                        aria-label="Edit note"
+                        rows={8}
+                        autoFocus
+                        className="w-full resize-y rounded-md border border-border bg-surface px-3 py-2 text-sm leading-6 outline-none focus:border-accent"
+                        value={editText}
+                        onChange={(event) => setEditText(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (
+                            event.key === 'Enter' &&
+                            (event.ctrlKey || event.metaKey)
+                          ) {
+                            event.preventDefault()
+                            void handleUpdate(item.id)
+                          }
+                        }}
+                      />
+                      <div className="flex justify-end gap-2">
+                        <button
+                          className="rounded-md border border-border px-3 py-1.5 text-xs text-text-muted hover:text-text disabled:opacity-40"
+                          disabled={mutating}
+                          onClick={() => {
+                            setEditingId(null)
+                            setEditText('')
+                          }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90 disabled:opacity-40"
+                          disabled={mutating || !editText.trim()}
+                          onClick={() => void handleUpdate(item.id)}
+                        >
+                          {mutating ? 'Saving…' : 'Save changes'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="whitespace-pre-wrap text-sm">
+                        {item.rawText}
+                      </p>
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 text-xs text-text-muted">
+                          <span>
+                            {item.kind === 'UNKNOWN'
+                              ? 'Unsorted note'
+                              : item.kind}
+                          </span>
+                          <time
+                            dateTime={new Date(item.capturedAt).toISOString()}
+                          >
+                            {new Date(item.capturedAt).toLocaleString()}
+                          </time>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            className="rounded-md border border-border px-3 py-1.5 text-xs text-text-muted hover:text-text disabled:opacity-40"
+                            disabled={mutating}
+                            onClick={() => {
+                              setPendingDeleteId(null)
+                              setEditingId(item.id)
+                              setEditText(item.rawText)
+                            }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            className="rounded-md border border-border px-3 py-1.5 text-xs text-danger hover:bg-danger/10 disabled:opacity-40"
+                            disabled={mutating}
+                            onClick={() => {
+                              setEditingId(null)
+                              setPendingDeleteId(item.id)
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                      {pendingDeleteId === item.id && (
+                        <div
+                          role="group"
+                          aria-label="Confirm note deletion"
+                          className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger/5 px-3 py-2"
+                        >
+                          <p className="text-xs text-text-muted">
+                            Remove from the inbox? The note will be archived,
+                            not permanently erased.
+                          </p>
+                          <div className="flex gap-2">
+                            <button
+                              className="rounded-md border border-border px-3 py-1.5 text-xs text-text-muted hover:text-text"
+                              onClick={() => setPendingDeleteId(null)}
+                            >
+                              Keep note
+                            </button>
+                            <button
+                              className="rounded-md bg-danger px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+                              disabled={mutating}
+                              onClick={() => void handleDelete(item.id)}
+                            >
+                              {mutating ? 'Archiving…' : 'Confirm delete'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </li>
               ))}
             </ul>

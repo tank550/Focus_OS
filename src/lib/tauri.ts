@@ -14,6 +14,10 @@ export const bridge = {
   inboxList: (): Promise<InboxItem[]> => invoke('inbox_list'),
   inboxCapture: (rawText: string): Promise<InboxItem> =>
     invoke('inbox_capture', { rawText }),
+  inboxUpdate: (id: string, rawText: string): Promise<void> =>
+    invoke('inbox_update', { id, rawText }),
+  inboxArchive: (id: string): Promise<void> =>
+    invoke('inbox_archive', { id }),
   settingsGet: (key: string): Promise<string | null> =>
     invoke('settings_get', { key }),
   settingsSet: (key: string, value: string): Promise<void> =>

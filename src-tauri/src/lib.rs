@@ -37,8 +37,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
             commands::health,
+            commands::inbox_archive,
             commands::inbox_capture,
             commands::inbox_list,
+            commands::inbox_update,
             commands::settings_get,
             commands::settings_set,
             commands::settings_all,
