@@ -1,9 +1,10 @@
-import { Inbox as InboxIcon } from 'lucide-react'
+import { Inbox as InboxIcon, Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Card } from '../../components/ui/Card'
 import { EmptyState } from '../../components/ui/EmptyState'
 import { useAppStore } from '../../stores/appStore'
 import { useInboxStore } from '../../stores/inboxStore'
+import { useSettingsStore } from '../../stores/settingsStore'
 
 export function InboxScreen() {
   const [text, setText] = useState('')
@@ -11,6 +12,7 @@ export function InboxScreen() {
   const [editText, setEditText] = useState('')
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const inTauri = useAppStore((s) => s.inTauri)
+  const aiProvider = useSettingsStore((s) => s.settings.ai.provider)
   const {
     items,
     loaded,
@@ -21,6 +23,7 @@ export function InboxScreen() {
     capture,
     update,
     archive,
+    analyze,
   } = useInboxStore()
 
   useEffect(() => {
@@ -53,6 +56,12 @@ export function InboxScreen() {
           Write freely. Each entry stays intact as a note; AI can later suggest
           how to organize it into tasks, projects, ideas, and more.
         </p>
+        {aiProvider === 'nim' && (
+          <p className="mt-2 text-xs text-text-muted">
+            Analyzing with NIM sends the selected note text to NVIDIA. It only
+            happens when you click the analysis button.
+          </p>
+        )}
       </header>
 
       <Card title="Write it all down">
@@ -171,6 +180,18 @@ export function InboxScreen() {
                         </div>
                         <div className="flex gap-2">
                           <button
+                            className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs text-text-muted hover:text-text disabled:opacity-40"
+                            disabled={mutating || !inTauri}
+                            onClick={() => void analyze(item.id)}
+                          >
+                            <Sparkles className="h-3.5 w-3.5" />
+                            {mutating
+                              ? 'Analyzing…'
+                              : aiProvider === 'nim'
+                                ? 'Analyze with NIM'
+                                : 'Preview mock'}
+                          </button>
+                          <button
                             className="rounded-md border border-border px-3 py-1.5 text-xs text-text-muted hover:text-text disabled:opacity-40"
                             disabled={mutating}
                             onClick={() => {
@@ -193,6 +214,34 @@ export function InboxScreen() {
                           </button>
                         </div>
                       </div>
+                      {item.analysis && (
+                        <div className="mt-3 rounded-md border border-border bg-surface px-3 py-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                              {item.analysis.provider === 'nim'
+                                ? 'NVIDIA NIM analysis'
+                                : 'Mock preview (not AI)'}
+                            </p>
+                            <span className="text-xs text-text-muted">
+                              {Math.round(item.analysis.analysis.confidence * 100)}%
+                              confidence
+                            </span>
+                          </div>
+                          <p className="mt-2 text-sm">
+                            {item.analysis.analysis.kind} ·{' '}
+                            {item.analysis.analysis.actionability}
+                          </p>
+                          {item.analysis.analysis.next_step && (
+                            <p className="mt-1 text-sm text-text-muted">
+                              Next step: {item.analysis.analysis.next_step}
+                            </p>
+                          )}
+                          <p className="mt-1 text-xs text-text-muted">
+                            This is a saved proposal; it has not created or
+                            changed any project or task.
+                          </p>
+                        </div>
+                      )}
                       {pendingDeleteId === item.id && (
                         <div
                           role="group"

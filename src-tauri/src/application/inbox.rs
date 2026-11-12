@@ -5,10 +5,11 @@ use focus_domain::ids::EntityId;
 use focus_domain::value_objects::UtcMillis;
 
 use crate::infrastructure::db::DbError;
+use crate::infrastructure::ai::AiAnalysisResult;
 use crate::infrastructure::repositories::inbox_repo::{InboxItemRecord, InboxRepo};
 use crate::state::AppState;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InboxItem {
     pub id: String,
@@ -16,17 +17,28 @@ pub struct InboxItem {
     pub kind: String,
     pub status: String,
     pub captured_at: i64,
+    pub analysis: Option<AiAnalysisResult>,
 }
 
-impl From<InboxItemRecord> for InboxItem {
-    fn from(record: InboxItemRecord) -> Self {
-        Self {
+impl TryFrom<InboxItemRecord> for InboxItem {
+    type Error = InboxError;
+
+    fn try_from(record: InboxItemRecord) -> Result<Self, Self::Error> {
+        let analysis = record
+            .classification
+            .map(|raw| {
+                serde_json::from_str(&raw)
+                    .map_err(|error| InboxError::InvalidStoredData(error.to_string()))
+            })
+            .transpose()?;
+        Ok(Self {
             id: record.id,
             raw_text: record.raw_text,
             kind: record.kind,
             status: record.status,
             captured_at: record.captured_at,
-        }
+            analysis,
+        })
     }
 }
 
@@ -36,6 +48,8 @@ pub enum InboxError {
     EmptyText,
     #[error("Inbox note was not found or is no longer active")]
     NotFound,
+    #[error("Invalid inbox analysis in the database: {0}")]
+    InvalidStoredData(String),
     #[error(transparent)]
     Database(#[from] DbError),
 }
@@ -52,6 +66,7 @@ pub fn capture(state: &AppState, raw_text: &str) -> Result<InboxItem, InboxError
         kind: "UNKNOWN".into(),
         status: "RAW".into(),
         captured_at,
+        analysis: None,
     };
     let mut conn = state.conn()?;
     let tx = conn.transaction().map_err(DbError::from)?;
@@ -63,6 +78,8 @@ pub fn capture(state: &AppState, raw_text: &str) -> Result<InboxItem, InboxError
             kind: item.kind.clone(),
             status: item.status.clone(),
             captured_at: item.captured_at,
+            updated_at: item.captured_at,
+            classification: None,
         },
     )?;
     tx.commit().map_err(DbError::from)?;
@@ -72,10 +89,10 @@ pub fn capture(state: &AppState, raw_text: &str) -> Result<InboxItem, InboxError
 
 pub fn list(state: &AppState) -> Result<Vec<InboxItem>, InboxError> {
     let conn = state.conn()?;
-    Ok(InboxRepo::list(&conn)?
+    InboxRepo::list(&conn)?
         .into_iter()
-        .map(InboxItem::from)
-        .collect())
+        .map(InboxItem::try_from)
+        .collect()
 }
 
 pub fn update(state: &AppState, id: &str, raw_text: &str) -> Result<(), InboxError> {

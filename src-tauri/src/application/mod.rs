@@ -2,6 +2,7 @@
 //! owns the transaction boundary for every mutation.
 
 pub mod goals;
+pub mod agent;
 pub mod inbox;
 pub mod projects;
 pub mod settings;

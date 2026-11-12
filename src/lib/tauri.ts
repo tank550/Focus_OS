@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import type {
   AppInfo,
+  AiAnalysisResult,
   Health,
   Goal,
   GoalSidecarEntry,
@@ -28,6 +29,8 @@ export const bridge = {
     invoke('inbox_update', { id, rawText }),
   inboxArchive: (id: string): Promise<void> =>
     invoke('inbox_archive', { id }),
+  inboxAnalyze: (id: string): Promise<AiAnalysisResult> =>
+    invoke('inbox_analyze', { id }),
   projectsList: (): Promise<Project[]> => invoke('projects_list'),
   projectsUpdate: (id: string, input: ProjectInput): Promise<void> =>
     invoke('projects_update', { id, ...input }),
@@ -61,4 +64,8 @@ export const bridge = {
   settingsSet: (key: string, value: string): Promise<void> =>
     invoke('settings_set', { key, value }),
   settingsAll: (): Promise<Record<string, string>> => invoke('settings_all'),
+  aiApiKeyStatus: (): Promise<boolean> => invoke('ai_api_key_status'),
+  aiApiKeyStore: (apiKey: string): Promise<void> =>
+    invoke('ai_api_key_store', { apiKey }),
+  aiApiKeyRemove: (): Promise<void> => invoke('ai_api_key_remove'),
 } as const

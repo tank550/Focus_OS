@@ -13,10 +13,10 @@ pub const KEY_APPEARANCE: &str = "appearance";
 /// Typed views over the JSON-blob settings. Values mirror
 /// `src/shared/contracts.ts`; keep them byte-identical.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(default, rename_all = "camelCase", deny_unknown_fields)]
 pub struct AiSettings {
     pub enabled: bool,
-    pub provider: String, // "nim" | "mock" (Phase 4 wires real providers)
+    pub provider: String, // "nim" | "mock"
     pub base_url: Option<String>,
     pub model: Option<String>,
     pub api_key_stored: bool,
@@ -26,8 +26,8 @@ impl Default for AiSettings {
     fn default() -> Self {
         Self {
             enabled: true,
-            provider: "mock".into(),
-            base_url: None,
+            provider: "nim".into(),
+            base_url: Some("https://integrate.api.nvidia.com".into()),
             model: None,
             api_key_stored: false,
         }
@@ -97,7 +97,7 @@ mod tests {
     #[test]
     fn typed_settings_defaults_serialize_camel_case() {
         let ai = serde_json::to_value(AiSettings::default()).unwrap();
-        assert_eq!(ai["provider"], "mock");
+        assert_eq!(ai["provider"], "nim");
         assert_eq!(ai["apiKeyStored"], false);
         assert!(ai.get("api_key_stored").is_none(), "must be camelCase");
 
@@ -107,5 +107,15 @@ mod tests {
 
         let app = serde_json::to_value(AppearanceSettings::default()).unwrap();
         assert_eq!(app["theme"], "dark");
+    }
+
+    #[test]
+    fn ai_settings_accept_older_blocks_without_key_status() {
+        let settings: AiSettings = serde_json::from_str(
+            r#"{"enabled":true,"provider":"mock","baseUrl":null,"model":null}"#,
+        )
+        .unwrap();
+        assert_eq!(settings.provider, "mock");
+        assert!(!settings.api_key_stored);
     }
 }

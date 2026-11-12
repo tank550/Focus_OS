@@ -1,6 +1,8 @@
 use tauri::State;
 
+use crate::application::agent;
 use crate::application::inbox::{self, InboxItem};
+use crate::infrastructure::ai::AiAnalysisResult;
 use crate::state::AppState;
 
 #[tauri::command]
@@ -25,4 +27,14 @@ pub fn inbox_update(
 #[tauri::command]
 pub fn inbox_archive(state: State<'_, AppState>, id: String) -> Result<(), String> {
     inbox::archive(&state, &id).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn inbox_analyze(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<AiAnalysisResult, String> {
+    agent::analyze_inbox_note(&state, &id)
+        .await
+        .map_err(|error| error.to_string())
 }

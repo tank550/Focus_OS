@@ -15,8 +15,8 @@ realistic daily execution.
   Tailwind CSS v4 · Zustand · Lucide
 - **SQLite** via `rusqlite` (writes only from the Rust core) — WAL, foreign
   keys, versioned migrations
-- **NVIDIA NIM** as the (future) structured-output LLM provider — no state
-  mutations from the model layer, ever
+- **NVIDIA NIM** as the structured-output LLM provider — notes are sent only
+  after an explicit analysis action; the model never mutates application state
 
 ## Layout
 
@@ -24,7 +24,7 @@ realistic daily execution.
 docs/                    architecture contract + DDL (source of truth)
 crates/focus-domain/     pure-Rust domain model (no Tauri/SQLite deps)
 src-tauri/               Rust core: commands, services, db, migrations
-src/                     React presentation + (Phase 4) AI orchestration
+src/                     React presentation and explicit AI analysis controls
 ```
 
 ## Development
@@ -59,3 +59,8 @@ cargo test               # headless domain + SQLite integration tests
 8. The app stays fully functional when NIM is offline; Discord is optional.
 9. Nothing is ever deleted silently.
 10. Favor meaningful progress over task-completion metrics.
+
+The Inbox can save an analysis proposal from NVIDIA NIM; it does not yet create
+projects or tasks from that proposal. Configure the NIM model and API key in
+Settings. The mock provider is for offline UI/testing only and does not analyze
+note content.

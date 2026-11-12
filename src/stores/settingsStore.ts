@@ -1,13 +1,13 @@
 import { create } from 'zustand'
 import { bridge, isTauri } from '../lib/tauri'
-import type { Settings } from '../shared/contracts'
+import type { AiSettings, Settings } from '../shared/contracts'
 
 /** Mirrors the Rust defaults in `application::settings::Settings::default()`. */
 export const DEFAULT_SETTINGS: Settings = {
   ai: {
     enabled: true,
-    provider: 'mock',
-    baseUrl: null,
+    provider: 'nim',
+    baseUrl: 'https://integrate.api.nvidia.com',
     model: null,
     apiKeyStored: false,
   },
@@ -34,12 +34,17 @@ function parseBlock<T>(raw: string | undefined, fallback: T): T {
 interface SettingsStore {
   settings: Settings
   loaded: boolean
+  error: string | null
   load: () => Promise<void>
+  saveAi: (ai: AiSettings) => Promise<void>
+  storeAiApiKey: (apiKey: string) => Promise<void>
+  removeAiApiKey: () => Promise<void>
 }
 
 export const useSettingsStore = create<SettingsStore>((set) => ({
   settings: DEFAULT_SETTINGS,
   loaded: false,
+  error: null,
 
   load: async () => {
     if (!isTauri()) {
@@ -47,10 +52,13 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
       return
     }
     try {
-      const all = await bridge.settingsAll()
+      const [all, apiKeyStored] = await Promise.all([
+        bridge.settingsAll(),
+        bridge.aiApiKeyStatus(),
+      ])
       set({
         settings: {
-          ai: parseBlock(all.ai, DEFAULT_SETTINGS.ai),
+          ai: { ...parseBlock(all.ai, DEFAULT_SETTINGS.ai), apiKeyStored },
           schedule: parseBlock(all.schedule, DEFAULT_SETTINGS.schedule),
           appearance: parseBlock(
             all.appearance,
@@ -58,9 +66,43 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
           ),
         },
         loaded: true,
+        error: null,
       })
-    } catch {
-      set({ loaded: true })
+    } catch (error) {
+      set({
+        loaded: true,
+        error: error instanceof Error ? error.message : String(error),
+      })
     }
+  },
+
+  saveAi: async (ai) => {
+    await bridge.settingsSet('ai', JSON.stringify(ai))
+    set((state) => ({
+      settings: { ...state.settings, ai },
+      error: null,
+    }))
+  },
+
+  storeAiApiKey: async (apiKey) => {
+    await bridge.aiApiKeyStore(apiKey)
+    set((state) => ({
+      settings: {
+        ...state.settings,
+        ai: { ...state.settings.ai, apiKeyStored: true },
+      },
+      error: null,
+    }))
+  },
+
+  removeAiApiKey: async () => {
+    await bridge.aiApiKeyRemove()
+    set((state) => ({
+      settings: {
+        ...state.settings,
+        ai: { ...state.settings.ai, apiKeyStored: false },
+      },
+      error: null,
+    }))
   },
 }))

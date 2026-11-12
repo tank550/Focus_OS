@@ -12,6 +12,7 @@ interface InboxStore {
   capture: (rawText: string) => Promise<boolean>
   update: (id: string, rawText: string) => Promise<boolean>
   archive: (id: string) => Promise<boolean>
+  analyze: (id: string) => Promise<boolean>
 }
 
 export const useInboxStore = create<InboxStore>((set, get) => ({
@@ -60,7 +61,15 @@ export const useInboxStore = create<InboxStore>((set, get) => ({
       await bridge.inboxUpdate(id, rawText)
       set((state) => ({
         items: state.items.map((item) =>
-          item.id === id ? { ...item, rawText } : item,
+          item.id === id
+            ? {
+                ...item,
+                rawText,
+                kind: 'UNKNOWN',
+                status: 'RAW',
+                analysis: null,
+              }
+            : item,
         ),
         mutating: false,
       }))
@@ -83,6 +92,23 @@ export const useInboxStore = create<InboxStore>((set, get) => ({
         items: state.items.filter((item) => item.id !== id),
         mutating: false,
       }))
+      return true
+    } catch (error) {
+      set({
+        mutating: false,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return false
+    }
+  },
+
+  analyze: async (id) => {
+    if (!isTauri() || get().mutating) return false
+    set({ mutating: true, error: null })
+    try {
+      await bridge.inboxAnalyze(id)
+      await get().load()
+      set({ mutating: false })
       return true
     } catch (error) {
       set({

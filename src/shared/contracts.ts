@@ -29,6 +29,38 @@ export interface InboxItem {
   kind: string
   status: string
   capturedAt: number
+  analysis: AiAnalysisResult | null
+}
+
+export type AnalysisKind =
+  | 'TASK'
+  | 'IDEA'
+  | 'PROJECT'
+  | 'RESPONSIBILITY'
+  | 'OBLIGATION'
+  | 'RESEARCH'
+  | 'EXPERIMENT'
+  | 'AMBITION'
+  | 'NOTE'
+
+export type Actionability = 'ACTIONABLE' | 'MAYBE' | 'NOT_ACTIONABLE'
+
+export interface BrainDumpAnalysis {
+  kind: AnalysisKind
+  project_guess: string | null
+  goal_guess: string | null
+  estimated_duration_minutes: number
+  priority: number
+  deadline: string | null
+  actionability: Actionability
+  next_step: string | null
+  dependencies: string[] | null
+  confidence: number
+}
+
+export interface AiAnalysisResult {
+  provider: 'nim' | 'mock'
+  analysis: BrainDumpAnalysis
 }
 
 export type ProjectStatus =

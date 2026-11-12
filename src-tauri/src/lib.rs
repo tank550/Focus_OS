@@ -36,12 +36,16 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
+            commands::ai_api_key_status,
+            commands::ai_api_key_store,
+            commands::ai_api_key_remove,
             commands::health,
             commands::goal_sidecar_add,
             commands::goal_sidecar_list,
             commands::goals_create,
             commands::goals_list,
             commands::inbox_archive,
+            commands::inbox_analyze,
             commands::inbox_capture,
             commands::inbox_list,
             commands::inbox_update,
