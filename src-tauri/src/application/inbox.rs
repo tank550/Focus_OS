@@ -39,8 +39,7 @@ pub enum InboxError {
 }
 
 pub fn capture(state: &AppState, raw_text: &str) -> Result<InboxItem, InboxError> {
-    let raw_text = raw_text.trim();
-    if raw_text.is_empty() {
+    if raw_text.trim().is_empty() {
         return Err(InboxError::EmptyText);
     }
 
@@ -82,14 +81,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn capture_trims_and_persists_inbox_item() {
+    fn capture_preserves_multiline_text_and_persists_inbox_item() {
         let directory = std::env::temp_dir().join(format!("focus-os-inbox-{}", EntityId::new()));
         let database_path = directory.join("test.db");
         let pool = crate::infrastructure::db::open(&database_path).unwrap();
         let state = AppState::new(pool, database_path);
+        let text = "  Review the proposal\n\nThen write down the open questions.  ";
 
-        let captured = capture(&state, "  Review the proposal\n").unwrap();
-        assert_eq!(captured.raw_text, "Review the proposal");
+        let captured = capture(&state, text).unwrap();
+        assert_eq!(captured.raw_text, text);
         assert_eq!(captured.kind, "UNKNOWN");
         assert_eq!(captured.status, "RAW");
         assert_eq!(list(&state).unwrap(), vec![captured]);

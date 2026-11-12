@@ -11,7 +11,7 @@ interface InboxStore {
   capture: (rawText: string) => Promise<boolean>
 }
 
-export const useInboxStore = create<InboxStore>((set) => ({
+export const useInboxStore = create<InboxStore>((set, get) => ({
   items: [],
   loaded: false,
   saving: false,
@@ -34,7 +34,7 @@ export const useInboxStore = create<InboxStore>((set) => ({
   },
 
   capture: async (rawText) => {
-    if (!isTauri()) return false
+    if (!isTauri() || get().saving) return false
     set({ saving: true, error: null })
     try {
       const item = await bridge.inboxCapture(rawText)
