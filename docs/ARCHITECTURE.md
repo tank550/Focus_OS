@@ -1,7 +1,9 @@
 # Focus OS — Technical Architecture
 
 > **Version:** 1.0 (draft for approval) · **Date:** 2026-11-10
-> **Status:** AWAITING APPROVAL — no implementation code has been generated yet.
+> **Status:** Incremental implementation in progress; note-driven agent behavior
+> and goal Sidecar observability are recorded in [ADR 0001](ADRs/0001-note-driven-agent.md)
+> and [ADR 0002](ADRs/0002-goal-sidecar-observability.md).
 > **Companion artifact:** `docs/SQLITE_SCHEMA.sql` (complete initial DDL).
 
 ---
@@ -41,14 +43,15 @@ mechanism, never by programmer convention:
 | Product rule | Enforcing mechanism |
 |---|---|
 | SQLite is the source of truth | All state mutations persist in SQLite via Rust application services within a transaction. No in-memory-only business state. The frontend is a read-model projection + commander. |
-| LLM never mutates state directly | NIM HTTP client runs in Rust. LLM output is Zod-validated into **proposed operations** (`Operation[]`), which are executed only by Rust application services. The webview has no SQL capability. |
+| LLM never mutates state directly | NIM HTTP client runs in Rust. The note agent may call only a closed set of typed Rust tools; each call is validated and policy-checked by application services. The webview has no SQL capability. |
 | Deterministic scheduler validates all allocations | `SchedulerService` is authoritative over `scheduled_blocks` / `flexible_queue_items`. `validate_schedule()` is pure and unit-tested. AI-suggested schedules are fed through the same validator. |
 | Hybrid scheduling is a first-class concept | Two disjoint scheduling artifacts — `scheduled_blocks` (time-anchored) and `flexible_queue_items` (priority-ordered). A task appears in exactly one of them per daily plan. |
 | Flexible tasks must not become fake appointments | The queue is a planning structure, not time slots; blocks are created only for deep work, sessions, commitments, breaks, buffers, unavailability. |
 | Active tasks not interrupted by minor replanning | Replanning freezes the currently `ACTIVE` block and operates on the horizon after `now + active_window`. |
 | Hard constraints never silently violated | `validate_schedule()` runs before any plan persists; violations produce a typed error and the offending operation is rejected. |
-| Strategic changes require explicit confirmation | Autonomy policy maps goal/milestone/deadline/fixed-commitment mutations to `REQUIRE_CONFIRMATION`; an approval dialog blocks execution. |
+| Strategic changes require explicit confirmation | Clear, additive task/project creation from a note may execute automatically under audit. Goal/milestone/deadline/fixed-commitment changes and destructive or ambiguous operations require confirmation or review. |
 | Autonomous changes auditable + reversible | Append-only `autonomy_decisions` + `schedule_events` carrying `undo_payload`; revert rehydrates prior state. |
+| Goal progress is measured, not guessed | A visible goal Sidecar stores source-attributed observations separately from official goal status/progress; AI interpretations are labeled and reviewable. |
 | Do not overload the day | Workload model caps planned minutes, deep-work-block count, consecutive focus time, and reserves buffer *before* placement. Overflow is reported explicitly, never crammed. |
 | Capture without interrupting | Quick-capture overlay writes one `inbox_items` row in a single transaction; the running focus session is untouched. |
 | Functional when NIM is unavailable | `LlmProvider` trait with `MockProvider`; classification/planning degrade to deterministic defaults + reuse of last-good history. |
@@ -61,9 +64,13 @@ The two product decisions — **hybrid scheduling** and **adaptive autonomy** �
 are reflected in the component topology itself:
 
 - **Semantic intelligence** (classify, decompose, explain, narrate) is owned by
-  the LLM layer and is *advisory*.
+  the LLM layer. For note organization, the agent can request authorized
+  add-only actions through its bounded harness.
 - **Determinism** (scores, placements, constraints, autonomy classification,
   transactions) is owned by Rust and is *authoritative*.
+- **Goal observability** is a separate Sidecar stream: Focus OS events,
+  explicitly connected integrations, system activity, and user check-ins are
+  source-attributed evidence; Sidecar data never overwrites official objectives.
 
 The interface between them is the validated `ProposedOperation` — a small,
 closed algebraic data type. It is the only shape in which AI output may enter
@@ -112,10 +119,11 @@ decides" holds structurally, not just by convention.
 1. **UI → Isolation → Application Service → Repository → SQLite.** The frontend
    cannot reach SQLite — the webview has no SQL capability (`tauri-plugin-sql`
    is deliberately *not* installed).
-2. **LLM → context assembly → NIM → Zod validation → `ProposedOperation[]` →
-   Autonomy Policy → Application Service.** When the autonomy level is
-   `PROPOSE` or `REQUIRE_CONFIRMATION` the service persists an
-   `approval_requests` row and returns it; nothing else is mutated.
+2. **Note → context assembly → NIM → schema validation → bounded agent tools →
+   Autonomy Policy → Application Service.** Clear, additive task/project
+   creations may execute automatically and are audited. Ambiguous operations
+   are surfaced for review; `PROPOSE` or `REQUIRE_CONFIRMATION` operations
+   persist an `approval_requests` row and do not mutate the target state.
 3. **Scheduler reads, validates, commits.** Time allocations always pass through
    `SchedulerService::commit_plan`, which runs `validate_schedule()` and writes
    plan + blocks + queue + audit event in a single transaction.
@@ -476,7 +484,9 @@ its rule table is user-editable in Settings.
 | `reschedule_project_task` (non-trivial) | PROPOSE | R11 |
 | `insert_task_displacing_priority` | PROPOSE | R12 |
 | `substantial_day_replan` | PROPOSE | R13 |
-| `adopt_inbox_classification` (creates tasks/projects) | PROPOSE | R14 |
+| `create_task_from_note` (clear, additive, validated) | AUTO_EXECUTE | R14 |
+| `create_project_from_note` (clear, additive, validated) | AUTO_EXECUTE | R15 |
+| `organize_ambiguous_note` (uncertain classification or relationships) | PROPOSE | R16 |
 | `change_goal` / `change_milestone` | REQUIRE_CONFIRMATION | R20 |
 | `delete_task` / `delete_project` / `abandon_project` | REQUIRE_CONFIRMATION | R21 |
 | `change_mandatory_deadline` | REQUIRE_CONFIRMATION | R22 |
@@ -506,9 +516,10 @@ below REQUIRE_CONFIRMATION.
 ### 7.3 Decision execution flow
 
 ```
-1. trigger detected (user action / scheduler event / inbox classify)
-2. AI layer (if applicable) produces a Zod-validated ProposedOperation
-3. AutonomyPolicy.classify → level
+1. trigger detected (user action / scheduler event / inbox organize)
+2. AI layer produces a schema-validated intent; model output is not a command
+3. Agent requests a closed-set tool action; Rust validates fields and local
+   references, then `AutonomyPolicy.classify` determines its level
 4. match level:
      AUTO_EXECUTE         → apply via ApplicationService (transaction),
                             append autonomy_decisions(EXECUTED),
@@ -533,6 +544,22 @@ Entities are soft-deleted; nothing is ever hard-deleted silently.
 matched policy snapshot, status, reason, before/proposed/result payloads,
 related task ids, approval link, undo link — queryable in Analytics and
 rendered as an audit timeline.
+
+### 7.6 Goal Sidecar
+
+`goal_sidecar_entries` is a source-attributed observation stream separate from
+`goals.progress` and `goals.status`. It can contain user check-ins, Focus OS
+task/session events, explicitly connected integration events, system activity,
+and AI assessments. The Goals screen displays this evidence beside official
+objective state; AI assessments carry confidence/provenance and remain
+reviewable. Sidecar evidence alone never changes goal state or declares success.
+
+System monitoring and integrations require explicit source-level consent and
+visible pause/disable and retention controls. System data may include app names,
+window titles, domains, and duration, but not keystrokes, screenshots, document
+contents, or full URLs/query strings. Raw activity details stay local and are
+not sent to a remote model by default; AI context uses a minimized,
+goal-relevant summary.
 
 ---
 
@@ -919,7 +946,10 @@ incremental by design; no phase starts the next until its gates close.
 - Domain entities + status machines (task/project/goal/milestone/inbox);
   repositories; InboxService (instant capture, async classify states);
   ProjectService; GoalService; task dependencies; soft-delete everywhere;
-  typed commands for every aggregate.
+  typed commands for every aggregate. Projects are created by the note agent,
+  not by a manual project form; existing project records remain editable.
+  Add goal Sidecar observations as a separate read model; do not let observation
+  capture mutate official goal status or progress.
 - **Exit:** full CRUD round-trips through IPC; integration tests; capture of a
   raw item is < transaction-time and requires no AI.
 
@@ -934,7 +964,8 @@ incremental by design; no phase starts the next until its gates close.
 ### Phase 4 — AI intelligence
 - `NimProvider`/`MockProvider` + ChatRequest + SSE + retry/timeout + wiremock
   tests; ContextSelector (FTS5) + token budgets; Zod schemas + entity-ref
-  verification; orchestrators BrainDumpAnalyzer · TaskClassifier ·
+  verification; bounded note-agent harness with idempotent, audited project
+  and task creation; orchestrators BrainDumpAnalyzer · TaskClassifier ·
   ProjectAnalyzer · GoalPlanner · DailyPlanner · ScheduleOptimizer ·
   ScheduleChangeExplainer; ai_planning_history; degradation paths.
 - **Exit:** classify→propose→apply works against **mock** provider in CI;

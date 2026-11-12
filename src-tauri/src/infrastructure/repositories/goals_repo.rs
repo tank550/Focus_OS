@@ -32,6 +32,7 @@ pub struct SidecarEntryRecord {
     pub duration_seconds: Option<i64>,
     pub confidence: f64,
     pub review_status: String,
+    pub source_ref: Option<String>,
     pub created_at: i64,
 }
 
@@ -102,8 +103,8 @@ impl GoalsRepo {
             "INSERT INTO goal_sidecar_entries
                 (id, goal_id, source, entry_type, content, application_name, window_title,
                  domain, observed_start, observed_end, duration_seconds, confidence,
-                 review_status, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14)",
+                 review_status, source_ref, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?15)",
             rusqlite::params![
                 entry.id,
                 entry.goal_id,
@@ -118,6 +119,7 @@ impl GoalsRepo {
                 entry.duration_seconds,
                 entry.confidence,
                 entry.review_status,
+                entry.source_ref,
                 entry.created_at,
             ],
         )?;
@@ -131,7 +133,7 @@ impl GoalsRepo {
         let mut statement = conn.prepare(
             "SELECT id, goal_id, source, entry_type, content, application_name, window_title,
                     domain, observed_start, observed_end, duration_seconds, confidence,
-                    review_status, created_at
+                    review_status, source_ref, created_at
              FROM goal_sidecar_entries
              WHERE goal_id = ?1 AND review_status != 'REJECTED'
              ORDER BY created_at DESC, id DESC",
@@ -151,7 +153,8 @@ impl GoalsRepo {
                 duration_seconds: row.get(10)?,
                 confidence: row.get(11)?,
                 review_status: row.get(12)?,
-                created_at: row.get(13)?,
+                source_ref: row.get(13)?,
+                created_at: row.get(14)?,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)

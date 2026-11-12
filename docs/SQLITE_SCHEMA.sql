@@ -7,8 +7,9 @@
 --   * Soft delete: entities carry archived / deleted_at instead of hard DELETE.
 --   * Foreign keys enforced at connection level (PRAGMA foreign_keys = ON).
 --   * WAL journaling + busy_timeout set by the connection manager.
---   * JSON payloads are the ONLY sanctioned free-form columns; everything else
---     is normalized and strictly typed.
+--   * JSON payloads and explicit user-authored text fields are the sanctioned
+--     free-form columns; everything else is normalized and strictly typed.
+--   * v0002 adds the goal Sidecar as a separate observation stream.
 -- =====================================================================
 
 -- Settings: key/value JSON store (avoids migration churn for preferences).
@@ -412,6 +413,39 @@ CREATE INDEX idx_autonomy_occurred     ON autonomy_decisions(occurred_at);
 CREATE INDEX idx_autonomy_status       ON autonomy_decisions(status);
 CREATE INDEX idx_approval_status       ON approval_requests(status);
 CREATE INDEX idx_notifications_sched   ON notifications(status, scheduled_for);
+
+-- =====================================================================
+-- Migration v0002 — goal Sidecar observations (separate from goal progress)
+-- =====================================================================
+CREATE TABLE goal_sidecar_entries (
+    id               TEXT PRIMARY KEY,
+    goal_id          TEXT NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
+    source            TEXT NOT NULL
+        CHECK (source IN ('USER','FOCUS_OS','INTEGRATION','SYSTEM','AI')),
+    entry_type        TEXT NOT NULL
+        CHECK (entry_type IN ('CHECK_IN','ACTIVITY','ASSESSMENT')),
+    content           TEXT NOT NULL,
+    application_name  TEXT,
+    window_title      TEXT,
+    domain            TEXT,
+    observed_start    INTEGER,
+    observed_end      INTEGER,
+    duration_seconds  INTEGER CHECK (duration_seconds IS NULL OR duration_seconds >= 0),
+    confidence        REAL NOT NULL DEFAULT 1
+        CHECK (confidence >= 0 AND confidence <= 1),
+    review_status     TEXT NOT NULL DEFAULT 'CONFIRMED'
+        CHECK (review_status IN ('CONFIRMED','PENDING','REJECTED')),
+    source_ref        TEXT,
+    created_at        INTEGER NOT NULL,
+    updated_at        INTEGER NOT NULL,
+    CHECK (observed_start IS NULL OR observed_end IS NULL OR observed_end >= observed_start),
+    UNIQUE (source, source_ref)
+);
+
+CREATE INDEX idx_goal_sidecar_goal_time
+    ON goal_sidecar_entries(goal_id, created_at DESC);
+CREATE INDEX idx_goal_sidecar_source_time
+    ON goal_sidecar_entries(source, created_at DESC);
 
 -- FTS5 virtual table (added in a later migration) for AI context selection:
 -- CREATE VIRTUAL TABLE fts_context USING fts5(

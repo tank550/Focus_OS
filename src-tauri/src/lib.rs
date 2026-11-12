@@ -37,13 +37,25 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
             commands::health,
+            commands::goal_sidecar_add,
+            commands::goal_sidecar_list,
+            commands::goals_create,
+            commands::goals_list,
             commands::inbox_archive,
             commands::inbox_capture,
             commands::inbox_list,
             commands::inbox_update,
+            commands::projects_archive,
+            commands::projects_list,
+            commands::projects_update,
             commands::settings_get,
             commands::settings_set,
             commands::settings_all,
+            commands::tasks_list_open,
+            commands::tasks_current_focus,
+            commands::tasks_start_focus,
+            commands::tasks_pause_focus,
+            commands::tasks_complete,
         ]);
 
     #[cfg(desktop)]

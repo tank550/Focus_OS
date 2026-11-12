@@ -45,4 +45,5 @@ harness, container/design-system shell.
 - Command errors are surfaced as strings (`Result<_, String>`); typed error
   DTOs are scheduled with the Phase-2 contract codegen.
 - `tauri-plugin-keyring` (OS credential storage) is Phase 7, per the roadmap.
-- `count_tables()` asserts 21 tables — if the schema grows, bump the constant.
+- `count_tables()` asserts 22 tables after migration v0002 — update the
+  constant when adding another application table.

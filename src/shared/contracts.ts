@@ -31,6 +31,93 @@ export interface InboxItem {
   capturedAt: number
 }
 
+export type ProjectStatus =
+  | 'BACKLOG'
+  | 'ACTIVE'
+  | 'ON_HOLD'
+  | 'COMPLETED'
+  | 'ARCHIVED'
+
+export interface Project {
+  id: string
+  name: string
+  description: string | null
+  status: ProjectStatus
+  priority: number
+  progress: number
+  createdAt: number
+  updatedAt: number
+}
+
+export interface ProjectInput {
+  name: string
+  description: string | null
+  status: Exclude<ProjectStatus, 'ARCHIVED'>
+  priority: number
+}
+
+export interface Goal {
+  id: string
+  title: string
+  description: string | null
+  expectedOutcome: string | null
+  successCriteria: string[]
+  status: string
+  progress: number
+  priority: number
+  targetDate: number | null
+  createdAt: number
+  updatedAt: number
+}
+
+export interface GoalSidecarEntry {
+  id: string
+  goalId: string
+  source: 'USER' | 'FOCUS_OS' | 'INTEGRATION' | 'SYSTEM' | 'AI'
+  entryType: 'CHECK_IN' | 'ACTIVITY' | 'ASSESSMENT'
+  content: string
+  applicationName: string | null
+  windowTitle: string | null
+  domain: string | null
+  observedStart: number | null
+  observedEnd: number | null
+  durationSeconds: number | null
+  confidence: number
+  reviewStatus: 'CONFIRMED' | 'PENDING' | 'REJECTED'
+  createdAt: number
+}
+
+export type TaskStatus =
+  | 'INBOX'
+  | 'TODO'
+  | 'SCHEDULED'
+  | 'IN_PROGRESS'
+  | 'PAUSED'
+  | 'COMPLETED'
+  | 'CANCELLED'
+
+export interface Task {
+  id: string
+  projectId: string | null
+  goalId: string | null
+  title: string
+  description: string | null
+  status: TaskStatus
+  priority: number
+  estimatedMinutes: number
+  actualMinutes: number
+  requiresDeepWork: boolean
+  createdAt: number
+  updatedAt: number
+}
+
+export interface FocusSession {
+  id: string
+  taskId: string
+  taskTitle: string
+  startTime: number
+}
+
 export interface AiSettings {
   enabled: boolean
   provider: 'nim' | 'mock'

@@ -73,8 +73,8 @@ impl Default for AppearanceSettings {
 // ---------------------------------------------------------------------------
 
 pub fn get_raw(state: &AppState, key: &str) -> Result<Option<String>, DbError> {
-    let mut conn = state.conn()?;
-    SettingsRepo::get(&mut conn, key)
+    let conn = state.conn()?;
+    SettingsRepo::get(&conn, key)
 }
 
 pub fn set_raw(state: &AppState, key: &str, value: &str) -> Result<(), DbError> {
@@ -86,8 +86,8 @@ pub fn set_raw(state: &AppState, key: &str, value: &str) -> Result<(), DbError> 
 }
 
 pub fn all_raw(state: &AppState) -> Result<BTreeMap<String, String>, DbError> {
-    let mut conn = state.conn()?;
-    SettingsRepo::all(&mut conn)
+    let conn = state.conn()?;
+    SettingsRepo::all(&conn)
 }
 
 #[cfg(test)]

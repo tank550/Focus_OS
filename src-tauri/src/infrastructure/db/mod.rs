@@ -48,14 +48,24 @@ pub struct Migration {
 /// Ordered, immutable migration set. Add new versions by appending — never edit
 /// an applied migration. The embedded file is a byte-identical copy of
 /// `docs/SQLITE_SCHEMA.sql` (hashes are pinned in the phase-1 notes).
-pub const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "initial_schema",
-    sql: include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/migrations/0001_init.sql"
-    )),
-}];
+pub const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "initial_schema",
+        sql: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/migrations/0001_init.sql"
+        )),
+    },
+    Migration {
+        version: 2,
+        name: "goal_sidecar",
+        sql: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/migrations/0002_goal_sidecar.sql"
+        )),
+    },
+];
 
 /// Applies WAL + safety pragmas to every freshly-created connection.
 #[derive(Debug)]

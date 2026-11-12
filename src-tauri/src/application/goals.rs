@@ -201,6 +201,7 @@ pub fn add_check_in(
         duration_seconds: None,
         confidence: 1.0,
         review_status: "CONFIRMED".into(),
+        source_ref: None,
         created_at: now,
     };
     let mut conn = state.conn()?;

@@ -4,7 +4,9 @@ AI-powered adaptive personal operating system — local-first, hybrid scheduling
 adaptive autonomy. Turns scattered thoughts and ambitions into consistent,
 realistic daily execution.
 
-> **Status:** Phase 1 (Foundation) — in progress.
+> **Status:** Phase 2 (Core domain) — in progress. Inbox, project management,
+> a visible goal Sidecar, and basic task focus sessions are implemented.
+> Automatic AI organization, scheduling, and system activity observation remain.
 > Architecture contract: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
 ## Stack

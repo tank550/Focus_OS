@@ -1,5 +1,15 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { AppInfo, Health, InboxItem } from '../shared/contracts'
+import type {
+  AppInfo,
+  Health,
+  Goal,
+  GoalSidecarEntry,
+  FocusSession,
+  InboxItem,
+  Project,
+  ProjectInput,
+  Task,
+} from '../shared/contracts'
 
 /** True when running inside the Tauri webview, false in plain Vite/vitest. */
 export const isTauri = (): boolean => '__TAURI_INTERNALS__' in window
@@ -18,6 +28,34 @@ export const bridge = {
     invoke('inbox_update', { id, rawText }),
   inboxArchive: (id: string): Promise<void> =>
     invoke('inbox_archive', { id }),
+  projectsList: (): Promise<Project[]> => invoke('projects_list'),
+  projectsUpdate: (id: string, input: ProjectInput): Promise<void> =>
+    invoke('projects_update', { id, ...input }),
+  projectsArchive: (id: string): Promise<void> =>
+    invoke('projects_archive', { id }),
+  goalsList: (): Promise<Goal[]> => invoke('goals_list'),
+  goalsCreate: (input: {
+    title: string
+    description: string | null
+    expectedOutcome: string | null
+    successCriteria: string[]
+  }): Promise<Goal> => invoke('goals_create', input),
+  goalSidecarList: (goalId: string): Promise<GoalSidecarEntry[]> =>
+    invoke('goal_sidecar_list', { goalId }),
+  goalSidecarAdd: (
+    goalId: string,
+    content: string,
+  ): Promise<GoalSidecarEntry> =>
+    invoke('goal_sidecar_add', { goalId, content }),
+  tasksListOpen: (): Promise<Task[]> => invoke('tasks_list_open'),
+  tasksCurrentFocus: (): Promise<FocusSession | null> =>
+    invoke('tasks_current_focus'),
+  tasksStartFocus: (taskId: string): Promise<FocusSession> =>
+    invoke('tasks_start_focus', { taskId }),
+  tasksPauseFocus: (taskId: string): Promise<void> =>
+    invoke('tasks_pause_focus', { taskId }),
+  tasksComplete: (taskId: string): Promise<void> =>
+    invoke('tasks_complete', { taskId }),
   settingsGet: (key: string): Promise<string | null> =>
     invoke('settings_get', { key }),
   settingsSet: (key: string, value: string): Promise<void> =>

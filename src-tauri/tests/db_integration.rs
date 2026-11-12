@@ -21,18 +21,66 @@ fn migrations_apply_cleanly_and_are_idempotent() {
 
     let pool = db::open(&path).expect("open db");
     let mut conn = pool.get().expect("lease conn");
-    assert_eq!(db::migrations_applied(&mut conn).unwrap(), 1);
-    assert_eq!(db::count_tables(&mut conn).unwrap(), 21);
+    assert_eq!(db::migrations_applied(&mut conn).unwrap(), 2);
+    assert_eq!(db::count_tables(&mut conn).unwrap(), 22);
 
     // Second open against the same file must be a migration no-op.
     drop(conn);
     drop(pool);
     let pool2 = db::open(&path).expect("re-open db");
     let mut conn2 = pool2.get().expect("lease conn 2");
-    assert_eq!(db::migrations_applied(&mut conn2).unwrap(), 1);
+    assert_eq!(db::migrations_applied(&mut conn2).unwrap(), 2);
 
     drop(conn2);
     drop(pool2);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn sidecar_migration_preserves_existing_v1_goal_data() {
+    let (dir, path) = temp_database("sidecar-upgrade");
+    {
+        let conn = rusqlite::Connection::open(&path).expect("open legacy db");
+        conn.execute_batch(db::MIGRATIONS[0].sql)
+            .expect("apply original schema");
+        conn.execute_batch(
+            "CREATE TABLE schema_migrations (
+                version INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                applied_at INTEGER NOT NULL
+             );
+             INSERT INTO schema_migrations (version, name, applied_at)
+             VALUES (1, 'initial_schema', 1);
+             INSERT INTO goals
+                (id, title, status, progress, created_at, updated_at)
+             VALUES ('legacy-goal', 'Keep this objective', 'ACTIVE', 0.25, 1, 1);",
+        )
+        .expect("seed existing goal");
+    }
+
+    let pool = db::open(&path).expect("upgrade existing db");
+    let conn = pool.get().expect("lease upgraded connection");
+    let (title, progress): (String, f64) = conn
+        .query_row(
+            "SELECT title, progress FROM goals WHERE id = 'legacy-goal'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("existing goal remains");
+    assert_eq!(title, "Keep this objective");
+    assert_eq!(progress, 0.25);
+    let sidecar_table: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master
+             WHERE type = 'table' AND name = 'goal_sidecar_entries'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(sidecar_table, 1, "new Sidecar table is installed");
+
+    drop(conn);
+    drop(pool);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -44,6 +92,7 @@ fn schema_expected_tables_exist() {
 
     let expected = [
         "goals",
+        "goal_sidecar_entries",
         "milestones",
         "projects",
         "tasks",
