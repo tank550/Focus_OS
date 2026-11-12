@@ -4,8 +4,8 @@ use thiserror::Error;
 use focus_domain::ids::EntityId;
 use focus_domain::value_objects::UtcMillis;
 
-use crate::infrastructure::db::DbError;
 use crate::infrastructure::ai::AiAnalysisResult;
+use crate::infrastructure::db::DbError;
 use crate::infrastructure::repositories::inbox_repo::{InboxItemRecord, InboxRepo};
 use crate::state::AppState;
 

@@ -95,7 +95,10 @@ pub async fn analyze_inbox_note(
                     .as_deref()
                     .filter(|url| !url.trim().is_empty())
                     .unwrap_or(NIM_DEFAULT_BASE_URL),
-                ai_settings.model.as_deref().ok_or(AgentError::MissingModel)?,
+                ai_settings
+                    .model
+                    .as_deref()
+                    .ok_or(AgentError::MissingModel)?,
                 api_key,
             )?;
             AiAnalysisResult {
