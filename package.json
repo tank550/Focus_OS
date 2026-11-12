@@ -1,0 +1,36 @@
+{
+  "name": "focus-os",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "tauri": "tauri"
+  },
+  "license": "MIT OR Apache-2.0",
+  "description": "Focus OS - local-first adaptive personal operating system",
+  "private": "true",
+  "dependencies": {
+    "@tauri-apps/api": "^2.12.4",
+    "lucide-react": "^1.71.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-router-dom": "^7.18.5",
+    "zustand": "^5.1.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.5",
+    "@tauri-apps/cli": "^2.12.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "tailwindcss": "^4.3.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.7",
+    "vitest": "^5.1.0"
+  }
+}

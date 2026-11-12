@@ -1,0 +1,29 @@
+[package]
+name = "focus-os"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Focus OS desktop application — Tauri shell and Rust core"
+
+[lib]
+name = "focus_os_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-log = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-window-state = "2"
+focus-domain = { path = "../crates/focus-domain" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+rusqlite = { version = "0.41", features = ["bundled"] }
+r2d2 = "0.8.10"
+r2d2_sqlite = { version = "0.36.0", features = ["bundled"] }
