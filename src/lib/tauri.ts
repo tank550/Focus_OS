@@ -93,6 +93,6 @@ export const bridge = {
     invoke('portfolio_save_draft', { id, draftMarkdown }),
   plannerToday: (planDate: string): Promise<DailyPlan | null> =>
     invoke('planner_today', { planDate }),
-  plannerPlanDay: (planDate: string): Promise<DailyPlan> =>
-    invoke('planner_plan_day', { planDate }),
+  plannerPlanDay: (planDate: string, utcOffsetMinutes: number): Promise<DailyPlan> =>
+    invoke('planner_plan_day', { planDate, utcOffsetMinutes }),
 } as const

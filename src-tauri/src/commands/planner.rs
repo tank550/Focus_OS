@@ -15,6 +15,7 @@ pub fn planner_today(
 pub fn planner_plan_day(
     state: State<'_, AppState>,
     plan_date: String,
+    utc_offset_minutes: i32,
 ) -> Result<DailyPlan, String> {
-    planner::plan_day(&state, &plan_date).map_err(|error| error.to_string())
+    planner::plan_day(&state, &plan_date, utc_offset_minutes).map_err(|error| error.to_string())
 }

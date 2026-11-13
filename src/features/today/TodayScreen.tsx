@@ -73,7 +73,10 @@ export function TodayScreen() {
     setPlanning(true)
     setError(null)
     try {
-      const plan = await bridge.plannerPlanDay(localDateKey())
+      const plan = await bridge.plannerPlanDay(
+        localDateKey(),
+        new Date().getTimezoneOffset(),
+      )
       setTodayPlan(plan)
     } catch (reason) {
       setError(String(reason))
@@ -82,7 +85,7 @@ export function TodayScreen() {
     }
   }
 
-  const renderPlanTask = (task: PlannedTask) => {
+  const renderPlanTask = (task: PlannedTask, slotTime?: string) => {
     const isFocused = focus?.taskId === task.taskId
     const isBusy = busyTaskId === task.taskId
     return (
@@ -93,6 +96,9 @@ export function TodayScreen() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <p className="font-medium">{task.title}</p>
+            {slotTime && (
+              <p className="mt-1 text-xs font-medium text-accent">{slotTime}</p>
+            )}
             {task.description && (
               <p className="mt-1 whitespace-pre-wrap text-sm text-text-muted">
                 {task.description}
@@ -167,8 +173,8 @@ export function TodayScreen() {
         <h1 className="mt-1 text-2xl font-semibold">{title}</h1>
         <p className="mt-2 text-sm text-text-muted">
           Organise ta charge du jour avec une file locale priorisée et une
-          capacité réaliste. Le planificateur ne crée pas encore de créneaux
-          horaires.
+          capacité réaliste. Les tâches de travail profond reçoivent des
+          créneaux ; les autres restent dans une file flexible.
         </p>
       </header>
 
@@ -231,7 +237,7 @@ export function TodayScreen() {
               </div>
             ) : (
               <p className="text-xs text-text-muted">
-                Génère une file quotidienne à partir des tâches disponibles.
+                Génère un plan local à partir des tâches disponibles.
               </p>
             )}
             <button
@@ -258,28 +264,60 @@ export function TodayScreen() {
             <p className="py-6 text-sm text-text-muted">Chargement…</p>
           ) : todayPlan ? (
             <div className="flex flex-col gap-4">
-              {todayPlan.tasks.some((task) => task.fitsCapacity) && (
+              {todayPlan.scheduledBlocks.length > 0 && (
                 <section>
-                  <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-muted">
-                    Dans la capacité
+                  <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-accent">
+                    Créneaux de travail profond
                   </h3>
                   <ul className="flex flex-col gap-3">
-                    {todayPlan.tasks
-                      .filter((task) => task.fitsCapacity)
-                      .map(renderPlanTask)}
+                    {todayPlan.scheduledBlocks.map((block) =>
+                      renderPlanTask(
+                        {
+                          taskId: block.taskId,
+                          title: block.title,
+                          description: block.description,
+                          priority: block.priority,
+                          estimatedMinutes: block.durationMinutes,
+                          score: block.priority / 100,
+                          deadline: null,
+                          fitsCapacity: true,
+                        },
+                        `${new Date(block.scheduledStart).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })} – ${new Date(block.scheduledEnd).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}${block.active ? ' · En cours (créneau conservé)' : ''}`,
+                      ),
+                    )}
                   </ul>
                 </section>
               )}
-              {todayPlan.tasks.some((task) => !task.fitsCapacity) && (
+              {todayPlan.tasks.length > 0 && (
                 <section>
+                  <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-text-muted">
+                    File flexible
+                  </h3>
+                  {todayPlan.tasks.some((task) => task.fitsCapacity) && (
+                    <ul className="flex flex-col gap-3">
+                      {todayPlan.tasks
+                        .filter((task) => task.fitsCapacity)
+                        .map((task) => renderPlanTask(task))}
+                    </ul>
+                  )}
+                  {todayPlan.tasks.some((task) => !task.fitsCapacity) && (
+                    <>
                   <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-warning">
                     À reporter — dépassement
                   </h3>
                   <ul className="flex flex-col gap-3">
                     {todayPlan.tasks
                       .filter((task) => !task.fitsCapacity)
-                      .map(renderPlanTask)}
+                      .map((task) => renderPlanTask(task))}
                   </ul>
+                    </>
+                  )}
                 </section>
               )}
               {todayPlan.blockedTasks.length > 0 && (
@@ -300,6 +338,7 @@ export function TodayScreen() {
                 </section>
               )}
               {todayPlan.tasks.length === 0 &&
+                todayPlan.scheduledBlocks.length === 0 &&
                 todayPlan.blockedTasks.length === 0 && (
                   <EmptyState
                     icon={<Check className="h-8 w-8" />}

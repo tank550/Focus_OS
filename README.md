@@ -5,9 +5,10 @@ adaptive autonomy. Turns scattered thoughts and ambitions into consistent,
 realistic daily execution.
 
 > **Status:** Phases 2–3 — in progress. Inbox, project management, a visible
-> goal Sidecar, and focus sessions are implemented. The first local daily
-> priority queue now respects working capacity, reserve, and task dependencies;
-> time-block scheduling, automatic AI organization, and activity observation
+> goal Sidecar, and focus sessions are implemented. The local daily planner
+> prioritizes work, places deep-work tasks into time blocks, preserves a
+> workload reserve, and reports overflow and unresolved dependencies. Flexible
+> queue optimization, automatic AI organization, and activity observation
 > remain.
 > Architecture contract: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
@@ -74,7 +75,8 @@ After a separate confirmation, the app sends only the displayed derived
 summary to NVIDIA NIM for a portfolio assessment and editable CV draft. The
 assessment and draft are stored locally; raw GitHub source is never sent.
 
-Today can create a versioned local priority queue from open tasks. The queue
-respects the configured working-day limits and reserve, and reports overflow
-and unresolved dependencies without modifying task status. It does not yet
-assign clock-time blocks.
+Today can create a versioned local plan from open tasks. Deep-work tasks receive
+clock-time blocks with buffers; other tasks remain in a flexible priority
+queue. The planner respects configured working hours and reserve, reports
+overflow and unresolved dependencies, preserves a running block on replans,
+and does not otherwise modify task status.

@@ -214,8 +214,21 @@ export interface DailyPlan {
   overflowMinutes: number
   workloadReserveMinutes: number
   tasks: PlannedTask[]
+  scheduledBlocks: ScheduledBlock[]
   blockedTasks: PlannedTask[]
   createdAt: number
+}
+
+export interface ScheduledBlock {
+  id: string
+  taskId: string
+  title: string
+  description: string | null
+  scheduledStart: number
+  scheduledEnd: number
+  durationMinutes: number
+  priority: number
+  active: boolean
 }
 
 export interface FocusSession {

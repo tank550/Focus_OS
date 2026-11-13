@@ -8,12 +8,15 @@ use crate::application::settings::{self, ScheduleSettings};
 use crate::infrastructure::db::DbError;
 use crate::infrastructure::repositories::planner_repo::{
     DailyPlanRecord, NewDailyPlan, PlannerRepo, PlanningTaskRecord, QueueItemRecord,
+    ScheduledBlockRecord,
 };
 use crate::infrastructure::repositories::tasks_repo::TasksRepo;
 use crate::state::AppState;
 
 const MIN_RESERVE_MINUTES: u32 = 30;
+const MIN_BUFFER_MINUTES: u32 = 10;
 const DEADLINE_URGENCY_WINDOW_MS: i64 = 72 * 60 * 60 * 1000;
+const MILLIS_PER_MINUTE: i64 = 60_000;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -39,8 +42,23 @@ pub struct DailyPlan {
     pub overflow_minutes: u32,
     pub workload_reserve_minutes: u32,
     pub tasks: Vec<PlannedTask>,
+    pub scheduled_blocks: Vec<ScheduledBlock>,
     pub blocked_tasks: Vec<PlannedTask>,
     pub created_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScheduledBlock {
+    pub id: String,
+    pub task_id: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub scheduled_start: i64,
+    pub scheduled_end: i64,
+    pub duration_minutes: u32,
+    pub priority: u16,
+    pub active: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -49,6 +67,8 @@ struct FeasibilitySnapshot {
     capacity_minutes: u32,
     overflow_minutes: u32,
     overflow_task_ids: Vec<String>,
+    #[serde(default)]
+    scheduled_task_ids: Vec<String>,
     blocked_tasks: Vec<PlannedTask>,
 }
 
@@ -56,6 +76,8 @@ struct FeasibilitySnapshot {
 pub enum PlannerError {
     #[error("The plan date must be a valid YYYY-MM-DD date")]
     InvalidDate,
+    #[error("The local UTC offset must be between -14 and +14 hours")]
+    InvalidUtcOffset,
     #[error("Schedule settings are invalid: {0}")]
     InvalidScheduleSettings(String),
     #[error("Stored plan data is invalid: {0}")]
@@ -74,10 +96,22 @@ pub fn today(state: &AppState, plan_date: &str) -> Result<Option<DailyPlan>, Pla
         .transpose()
 }
 
-pub fn plan_day(state: &AppState, plan_date: &str) -> Result<DailyPlan, PlannerError> {
+pub fn plan_day(
+    state: &AppState,
+    plan_date: &str,
+    utc_offset_minutes: i32,
+) -> Result<DailyPlan, PlannerError> {
     validate_date(plan_date)?;
+    if !(-14 * 60..=14 * 60).contains(&utc_offset_minutes) {
+        return Err(PlannerError::InvalidUtcOffset);
+    }
     let schedule = load_schedule_settings(state)?;
     let (capacity_minutes, reserve_minutes) = capacity(&schedule)?;
+    let working_start = parse_clock(&schedule.working_hours_start)?;
+    let working_end = parse_clock(&schedule.working_hours_end)?;
+    let mut slot_cursor =
+        epoch_minute_for_local_time(plan_date, working_start, utc_offset_minutes)?;
+    let workday_end = epoch_minute_for_local_time(plan_date, working_end, utc_offset_minutes)?;
     let now = UtcMillis::now().0;
 
     let mut conn = state.conn()?;
@@ -85,6 +119,7 @@ pub fn plan_day(state: &AppState, plan_date: &str) -> Result<DailyPlan, PlannerE
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(DbError::from)?;
     let active_task_id = TasksRepo::active_session(&tx)?.map(|session| session.task_id);
+    let active_session_blocks = PlannerRepo::active_session_blocks(&tx, plan_date)?;
     let records = PlannerRepo::planning_tasks(&tx)?;
     let (mut eligible, blocked): (Vec<_>, Vec<_>) = records
         .into_iter()
@@ -106,16 +141,57 @@ pub fn plan_day(state: &AppState, plan_date: &str) -> Result<DailyPlan, PlannerE
     let mut planned_work_minutes = 0u32;
     let mut overflow_minutes = 0u32;
     let mut overflow_task_ids = Vec::new();
+    let mut scheduled_task_ids = Vec::new();
+    let mut scheduled_blocks = active_session_blocks
+        .iter()
+        .cloned()
+        .map(|record| {
+            let mut block = block_from_record(record);
+            block.id = EntityId::new().to_string();
+            block
+        })
+        .collect::<Vec<_>>();
+    let mut queue_tasks = Vec::new();
     let blocked_tasks = blocked
         .iter()
         .map(|task| to_planned_task(task, now))
         .collect::<Vec<_>>();
     for task in &eligible {
-        if planned_work_minutes.saturating_add(task.estimated_minutes) <= capacity_minutes {
-            planned_work_minutes += task.estimated_minutes;
-        } else {
+        let exceeds_capacity =
+            planned_work_minutes.saturating_add(task.estimated_minutes) > capacity_minutes;
+        if exceeds_capacity {
             overflow_minutes = overflow_minutes.saturating_add(task.estimated_minutes);
             overflow_task_ids.push(task.id.clone());
+            queue_tasks.push(task.clone());
+            continue;
+        }
+
+        if task.requires_deep_work || task.estimated_minutes >= 60 {
+            let duration = i64::from(task.estimated_minutes);
+            let end = slot_cursor.saturating_add(duration);
+            if end <= workday_end {
+                scheduled_blocks.push(ScheduledBlock {
+                    id: EntityId::new().to_string(),
+                    task_id: task.id.clone(),
+                    title: task.title.clone(),
+                    description: task.description.clone(),
+                    scheduled_start: slot_cursor.saturating_mul(MILLIS_PER_MINUTE),
+                    scheduled_end: end.saturating_mul(MILLIS_PER_MINUTE),
+                    duration_minutes: task.estimated_minutes,
+                    priority: task.priority,
+                    active: false,
+                });
+                slot_cursor = end.saturating_add(i64::from(MIN_BUFFER_MINUTES));
+                planned_work_minutes += task.estimated_minutes;
+                scheduled_task_ids.push(task.id.clone());
+            } else {
+                overflow_minutes = overflow_minutes.saturating_add(task.estimated_minutes);
+                overflow_task_ids.push(task.id.clone());
+                queue_tasks.push(task.clone());
+            }
+        } else {
+            planned_work_minutes += task.estimated_minutes;
+            queue_tasks.push(task.clone());
         }
     }
 
@@ -123,6 +199,7 @@ pub fn plan_day(state: &AppState, plan_date: &str) -> Result<DailyPlan, PlannerE
         capacity_minutes,
         overflow_minutes,
         overflow_task_ids: overflow_task_ids.clone(),
+        scheduled_task_ids,
         blocked_tasks: blocked_tasks.clone(),
     };
     let feasibility = serde_json::to_string(&snapshot)
@@ -142,7 +219,7 @@ pub fn plan_day(state: &AppState, plan_date: &str) -> Result<DailyPlan, PlannerE
         },
     )?;
 
-    for (position, task) in eligible.iter().enumerate() {
+    for (position, task) in queue_tasks.iter().enumerate() {
         let urgency = deadline_urgency(task.deadline, now);
         PlannerRepo::insert_queue_item(
             &tx,
@@ -153,6 +230,32 @@ pub fn plan_day(state: &AppState, plan_date: &str) -> Result<DailyPlan, PlannerE
             urgency,
             now,
         )?;
+    }
+
+    for (task, block) in eligible.iter().filter_map(|task| {
+        scheduled_blocks
+            .iter()
+            .find(|block| block.task_id == task.id && !block.active)
+            .map(|block| (task, block))
+    }) {
+        PlannerRepo::insert_scheduled_block(
+            &tx,
+            &plan_id,
+            task,
+            &block.id,
+            block.scheduled_start,
+            block.scheduled_end,
+            now,
+        )?;
+    }
+
+    for (source_block, copied_block) in active_session_blocks.iter().filter_map(|source| {
+        scheduled_blocks
+            .iter()
+            .find(|copy| copy.task_id == source.task_id && copy.active)
+            .map(|copy| (source, copy))
+    }) {
+        PlannerRepo::copy_active_block(&tx, &source_block.id, &plan_id, &copied_block.id, now)?;
     }
 
     let event_id = EntityId::new().to_string();
@@ -183,7 +286,7 @@ pub fn plan_day(state: &AppState, plan_date: &str) -> Result<DailyPlan, PlannerE
         planned_work_minutes,
         overflow_minutes,
         workload_reserve_minutes: reserve_minutes,
-        tasks: eligible
+        tasks: queue_tasks
             .iter()
             .map(|task| {
                 let mut planned = to_planned_task(task, now);
@@ -192,6 +295,7 @@ pub fn plan_day(state: &AppState, plan_date: &str) -> Result<DailyPlan, PlannerE
                 planned
             })
             .collect(),
+        scheduled_blocks,
         blocked_tasks,
         created_at: now,
     })
@@ -216,6 +320,7 @@ fn plan_from_record(record: DailyPlanRecord) -> Result<DailyPlan, PlannerError> 
             planned_from_queue(item, fits_capacity)
         })
         .collect();
+    let scheduled_blocks = record.blocks.into_iter().map(block_from_record).collect();
     Ok(DailyPlan {
         id: record.id,
         plan_date: record.plan_date,
@@ -225,9 +330,24 @@ fn plan_from_record(record: DailyPlanRecord) -> Result<DailyPlan, PlannerError> 
         overflow_minutes: snapshot.overflow_minutes,
         workload_reserve_minutes: record.workload_reserve_minutes,
         tasks,
+        scheduled_blocks,
         blocked_tasks: snapshot.blocked_tasks,
         created_at: record.created_at,
     })
+}
+
+fn block_from_record(block: ScheduledBlockRecord) -> ScheduledBlock {
+    ScheduledBlock {
+        id: block.id,
+        task_id: block.task_id,
+        title: block.title,
+        description: block.description,
+        scheduled_start: block.scheduled_start,
+        scheduled_end: block.scheduled_end,
+        duration_minutes: block.duration_minutes,
+        priority: block.priority,
+        active: block.status == "ACTIVE",
+    }
 }
 
 fn planned_from_queue(item: QueueItemRecord, fits_capacity: bool) -> PlannedTask {
@@ -331,12 +451,44 @@ fn parse_clock(value: &str) -> Result<u32, PlannerError> {
     Ok(hour * 60 + minute)
 }
 
+fn epoch_minute_for_local_time(
+    date: &str,
+    local_minute: u32,
+    utc_offset_minutes: i32,
+) -> Result<i64, PlannerError> {
+    let days = days_from_civil(date)?;
+    Ok(days
+        .saturating_mul(24 * 60)
+        .saturating_add(i64::from(local_minute))
+        .saturating_add(i64::from(utc_offset_minutes)))
+}
+
+fn days_from_civil(value: &str) -> Result<i64, PlannerError> {
+    let year = value[0..4]
+        .parse::<i64>()
+        .map_err(|_| PlannerError::InvalidDate)?;
+    let month = value[5..7]
+        .parse::<i64>()
+        .map_err(|_| PlannerError::InvalidDate)?;
+    let day = value[8..10]
+        .parse::<i64>()
+        .map_err(|_| PlannerError::InvalidDate)?;
+    let adjusted_year = year - i64::from(month <= 2);
+    let era = adjusted_year.div_euclid(400);
+    let year_of_era = adjusted_year - era * 400;
+    let adjusted_month = month + if month > 2 { -3 } else { 9 };
+    let day_of_year = (153 * adjusted_month + 2) / 5 + day - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    Ok(era * 146_097 + day_of_era - 719_468)
+}
+
 fn validate_date(value: &str) -> Result<(), PlannerError> {
     let invalid = || PlannerError::InvalidDate;
     let parts = value.split('-').collect::<Vec<_>>();
     if parts.len() != 3 || parts[0].len() != 4 || parts[1].len() != 2 || parts[2].len() != 2 {
         return Err(invalid());
     }
+
     let year = parts[0].parse::<u32>().map_err(|_| invalid())?;
     let month = parts[1].parse::<u32>().map_err(|_| invalid())?;
     let day = parts[2].parse::<u32>().map_err(|_| invalid())?;
@@ -371,6 +523,7 @@ mod tests {
             description: None,
             priority,
             estimated_minutes,
+            requires_deep_work: false,
             deadline,
             dependency_blocked: false,
             context_tag: None,
@@ -411,6 +564,22 @@ mod tests {
         assert!(validate_date("2026-02-29").is_err());
         assert!(validate_date("2028-02-29").is_ok());
         assert!(validate_date("2026-13-01").is_err());
+    }
+
+    #[test]
+    fn converts_local_working_hours_to_utc_using_the_browser_offset() {
+        assert_eq!(
+            epoch_minute_for_local_time("1970-01-01", 540, 0).unwrap(),
+            540
+        );
+        assert_eq!(
+            epoch_minute_for_local_time("1970-01-01", 540, -60).unwrap(),
+            480
+        );
+        assert_eq!(
+            epoch_minute_for_local_time("1970-01-01", 540, 330).unwrap(),
+            870
+        );
     }
 
     #[test]
@@ -486,7 +655,7 @@ mod tests {
             .unwrap();
         }
 
-        let first = plan_day(&state, "2026-11-13").unwrap();
+        let first = plan_day(&state, "2026-11-13", 0).unwrap();
         assert_eq!(first.version, 1);
         assert_eq!(first.capacity_minutes, 408);
         assert_eq!(first.planned_work_minutes, 390);
@@ -497,14 +666,29 @@ mod tests {
                 .iter()
                 .map(|task| task.task_id.as_str())
                 .collect::<Vec<_>>(),
-            vec!["long", "medium", "overflow", "predecessor"]
+            vec!["overflow", "predecessor"]
         );
-        assert!(first.tasks[0].fits_capacity);
-        assert!(!first.tasks[2].fits_capacity);
+        assert_eq!(
+            first
+                .scheduled_blocks
+                .iter()
+                .map(|block| block.task_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["long", "medium"]
+        );
+        assert_eq!(
+            first.scheduled_blocks[0].scheduled_start,
+            epoch_minute_for_local_time("2026-11-13", 9 * 60, 0).unwrap() * MILLIS_PER_MINUTE
+        );
+        assert_eq!(
+            first.scheduled_blocks[1].scheduled_start - first.scheduled_blocks[0].scheduled_end,
+            i64::from(MIN_BUFFER_MINUTES) * MILLIS_PER_MINUTE
+        );
+        assert!(!first.tasks[0].fits_capacity);
         assert_eq!(first.blocked_tasks[0].task_id, "blocked");
         assert_eq!(today(&state, "2026-11-13").unwrap(), Some(first.clone()));
 
-        let second = plan_day(&state, "2026-11-13").unwrap();
+        let second = plan_day(&state, "2026-11-13", 0).unwrap();
         assert_eq!(second.version, 2);
         let conn = state.conn().unwrap();
         let event_count: i64 = conn
@@ -526,19 +710,30 @@ mod tests {
         drop(conn);
 
         crate::application::tasks::start_focus(&state, "long").unwrap();
+        let frozen_start = second.scheduled_blocks[0].scheduled_start;
+        let replanned = plan_day(&state, "2026-11-13", 0).unwrap();
+        assert!(replanned.scheduled_blocks.iter().any(|block| {
+            block.task_id == "long" && block.scheduled_start == frozen_start && block.active
+        }));
         let started_plan = today(&state, "2026-11-13").unwrap().unwrap();
-        assert!(started_plan.tasks.iter().any(|task| task.task_id == "long"));
+        assert!(started_plan
+            .scheduled_blocks
+            .iter()
+            .any(|block| block.task_id == "long" && block.scheduled_start == frozen_start));
         crate::application::tasks::pause_focus(&state, "long").unwrap();
         assert!(today(&state, "2026-11-13")
             .unwrap()
             .unwrap()
-            .tasks
+            .scheduled_blocks
             .iter()
-            .any(|task| task.task_id == "long"));
+            .any(|block| block.task_id == "long"));
         crate::application::tasks::complete(&state, "long").unwrap();
-        assert!(!today(&state, "2026-11-13")
-            .unwrap()
-            .unwrap()
+        let completed_plan = today(&state, "2026-11-13").unwrap().unwrap();
+        assert!(!completed_plan
+            .scheduled_blocks
+            .iter()
+            .any(|block| block.task_id == "long"));
+        assert!(!completed_plan
             .tasks
             .iter()
             .any(|task| task.task_id == "long"));
@@ -556,7 +751,7 @@ mod tests {
         let state = AppState::new(pool, database_path);
 
         assert!(matches!(
-            plan_day(&state, "2026-02-29"),
+            plan_day(&state, "2026-02-29", 0),
             Err(PlannerError::InvalidDate)
         ));
         assert!(today(&state, "not-a-date").is_err());

@@ -190,8 +190,19 @@ impl TasksRepo {
     ) -> Result<(), DbError> {
         conn.execute(
             "INSERT INTO task_sessions
-                (id, task_id, start_time, duration_minutes, session_type, created_at, updated_at)
-             VALUES (?1, ?2, ?3, 0, 'FOCUS', ?3, ?3)",
+                (id, task_id, scheduled_block_id, start_time, duration_minutes,
+                 session_type, created_at, updated_at)
+             VALUES (
+                ?1,
+                ?2,
+                (SELECT b.id
+                 FROM scheduled_blocks b
+                 JOIN daily_plans p ON p.id = b.daily_plan_id
+                 WHERE b.task_id = ?2 AND b.status = 'PLANNED'
+                   AND p.status = 'ACTIVE'
+                 ORDER BY b.scheduled_start LIMIT 1),
+                ?3, 0, 'FOCUS', ?3, ?3
+             )",
             rusqlite::params![id, task_id, started_at],
         )?;
         Ok(())
@@ -228,6 +239,29 @@ impl TasksRepo {
                )
                AND status IN ('QUEUED','SELECTED','STARTED')",
             rusqlite::params![task_id, status, completed_at],
+        )?;
+        Ok(())
+    }
+
+    pub fn set_active_block_status(
+        conn: &Connection,
+        task_id: &str,
+        status: &str,
+        actual_start: Option<i64>,
+        actual_end: Option<i64>,
+    ) -> Result<(), DbError> {
+        conn.execute(
+            "UPDATE scheduled_blocks
+             SET status = ?2,
+                 actual_start = COALESCE(?3, actual_start),
+                 actual_end = COALESCE(?4, actual_end),
+                 updated_at = COALESCE(?4, ?3, updated_at)
+             WHERE task_id = ?1
+               AND daily_plan_id IN (
+                   SELECT id FROM daily_plans WHERE status = 'ACTIVE'
+               )
+               AND status IN ('PLANNED','ACTIVE')",
+            rusqlite::params![task_id, status, actual_start, actual_end],
         )?;
         Ok(())
     }
