@@ -4,6 +4,7 @@
 
 mod ai;
 mod app;
+mod github;
 mod goals;
 mod health;
 mod inbox;
@@ -13,6 +14,7 @@ mod tasks;
 
 pub use ai::*;
 pub use app::*;
+pub use github::*;
 pub use goals::*;
 pub use health::*;
 pub use inbox::*;

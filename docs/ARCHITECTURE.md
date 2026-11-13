@@ -991,6 +991,8 @@ incremental by design; no phase starts the next until its gates close.
 - Notification engine (materialize/dedupe/reconcile/focus suppression);
   30-min + start + overdue + daily reminders; system tray menu;
   global shortcuts; Discord digest (optional); keyring-backed secrets.
+- GitHub read-only connector (fine-grained token in OS keyring); on-demand
+  repository/source analysis and user-reviewed portfolio/CV drafts.
 - **Exit:** restart-missed-notification test; tray/shortcut smoke on
   Windows; Discord flag toggling without crash.
 

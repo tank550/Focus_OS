@@ -88,6 +88,21 @@ export interface ProjectInput {
   priority: number
 }
 
+export interface GithubRepository {
+  id: number
+  name: string
+  fullName: string
+  private: boolean
+  htmlUrl: string
+  description: string | null
+  defaultBranch: string
+  language: string | null
+  stargazersCount: number
+  forksCount: number
+  topics: string[]
+  updatedAt: string
+}
+
 export interface Goal {
   id: string
   title: string

@@ -7,3 +7,4 @@ target
 !.vscode/extensions.json
 .idea
 src-tauri/gen
+docs/ADRs/0003-read-only-github-portfolio.md

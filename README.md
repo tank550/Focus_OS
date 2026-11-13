@@ -65,3 +65,8 @@ actionable task proposal can create an audited task; project creation and
 ambiguous proposals still require the remaining agent workflow. Configure the
 NIM model and API key in Settings. The mock provider is for offline UI/testing
 only and cannot create tasks.
+
+Settings can connect GitHub with a fine-grained read-only token and manually
+list repositories owned by the account. Source scanning, project scoring, and
+portfolio/CV draft generation are not implemented yet; GitHub content is not
+sent to NVIDIA.

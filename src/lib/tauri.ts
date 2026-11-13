@@ -6,6 +6,7 @@ import type {
   Goal,
   GoalSidecarEntry,
   FocusSession,
+  GithubRepository,
   InboxItem,
   Project,
   ProjectInput,
@@ -70,4 +71,10 @@ export const bridge = {
   aiApiKeyStore: (apiKey: string): Promise<void> =>
     invoke('ai_api_key_store', { apiKey }),
   aiApiKeyRemove: (): Promise<void> => invoke('ai_api_key_remove'),
+  githubTokenStatus: (): Promise<boolean> => invoke('github_token_status'),
+  githubTokenStore: (token: string): Promise<GithubRepository[]> =>
+    invoke('github_token_store', { token }),
+  githubTokenRemove: (): Promise<void> => invoke('github_token_remove'),
+  githubRepositories: (): Promise<GithubRepository[]> =>
+    invoke('github_repositories'),
 } as const
