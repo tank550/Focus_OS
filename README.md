@@ -60,7 +60,8 @@ cargo test               # headless domain + SQLite integration tests
 9. Nothing is ever deleted silently.
 10. Favor meaningful progress over task-completion metrics.
 
-The Inbox can save an analysis proposal from NVIDIA NIM; it does not yet create
-projects or tasks from that proposal. Configure the NIM model and API key in
-Settings. The mock provider is for offline UI/testing only and does not analyze
-note content.
+The Inbox can save an analysis proposal from NVIDIA NIM. A user-confirmed,
+actionable task proposal can create an audited task; project creation and
+ambiguous proposals still require the remaining agent workflow. Configure the
+NIM model and API key in Settings. The mock provider is for offline UI/testing
+only and cannot create tasks.

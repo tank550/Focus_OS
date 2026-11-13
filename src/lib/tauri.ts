@@ -31,6 +31,8 @@ export const bridge = {
     invoke('inbox_archive', { id }),
   inboxAnalyze: (id: string): Promise<AiAnalysisResult> =>
     invoke('inbox_analyze', { id }),
+  inboxApplyTaskProposal: (id: string): Promise<Task> =>
+    invoke('inbox_apply_task_proposal', { id }),
   projectsList: (): Promise<Project[]> => invoke('projects_list'),
   projectsUpdate: (id: string, input: ProjectInput): Promise<void> =>
     invoke('projects_update', { id, ...input }),

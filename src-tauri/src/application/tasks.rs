@@ -112,6 +112,24 @@ pub enum TasksError {
 /// Only the note agent calls this service to create tasks; no manual create IPC
 /// command is exposed to the webview.
 pub fn create_from_agent(state: &AppState, draft: AgentTaskDraft) -> Result<Task, TasksError> {
+    let record = build_agent_task_record(draft)?;
+    let mut conn = state.conn()?;
+    let tx = conn.transaction().map_err(DbError::from)?;
+    insert_agent_task(&tx, &record)?;
+    tx.commit().map_err(DbError::from)?;
+    Task::try_from(record)
+}
+
+pub(crate) fn create_from_agent_in_transaction(
+    tx: &rusqlite::Transaction<'_>,
+    draft: AgentTaskDraft,
+) -> Result<Task, TasksError> {
+    let record = build_agent_task_record(draft)?;
+    insert_agent_task(tx, &record)?;
+    Task::try_from(record)
+}
+
+fn build_agent_task_record(draft: AgentTaskDraft) -> Result<TaskRecord, TasksError> {
     let title = draft.title.trim();
     if title.is_empty() {
         return Err(TasksError::EmptyTitle);
@@ -124,7 +142,7 @@ pub fn create_from_agent(state: &AppState, draft: AgentTaskDraft) -> Result<Task
     }
     let description = clean_optional(draft.description.as_deref());
     let now = UtcMillis::now().0;
-    let record = TaskRecord {
+    Ok(TaskRecord {
         id: EntityId::new().to_string(),
         project_id: draft.project_id,
         goal_id: draft.goal_id,
@@ -137,28 +155,27 @@ pub fn create_from_agent(state: &AppState, draft: AgentTaskDraft) -> Result<Task
         requires_deep_work: draft.requires_deep_work,
         created_at: now,
         updated_at: now,
-    };
+    })
+}
 
-    let mut conn = state.conn()?;
-    let tx = conn.transaction().map_err(DbError::from)?;
+fn insert_agent_task(conn: &rusqlite::Connection, record: &TaskRecord) -> Result<(), TasksError> {
     if record
         .project_id
         .as_deref()
-        .map(|id| TasksRepo::project_exists(&tx, id))
+        .map(|id| TasksRepo::project_exists(conn, id))
         .transpose()?
         == Some(false)
         || record
             .goal_id
             .as_deref()
-            .map(|id| TasksRepo::goal_exists(&tx, id))
+            .map(|id| TasksRepo::goal_exists(conn, id))
             .transpose()?
             == Some(false)
     {
         return Err(TasksError::InvalidLink);
     }
-    TasksRepo::insert_from_agent(&tx, &record)?;
-    tx.commit().map_err(DbError::from)?;
-    Task::try_from(record)
+    TasksRepo::insert_from_agent(conn, record)?;
+    Ok(())
 }
 
 pub fn list_open(state: &AppState) -> Result<Vec<Task>, TasksError> {

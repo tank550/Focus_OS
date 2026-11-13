@@ -43,8 +43,10 @@ change existing strategic data.
 ## Consequences
 
 - The first implementation increment is explicit, per-note analysis with a
-  persisted proposal. It does not yet create projects or tasks; automatic
-  application remains gated on the typed agent tools and autonomy policy below.
+  persisted proposal. An actionable task can be created only after explicit
+  user confirmation, in one transaction with proposal approval and an audit
+  decision. Project creation and automatic execution remain gated on the
+  broader typed agent tools and autonomy policy below.
 - `BrainDumpAnalyzer` must return multiple typed candidate actions, not just a
   single label for a note.
 - Rust remains the only persistence boundary; model-provided IDs and references

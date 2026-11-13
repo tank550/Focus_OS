@@ -24,6 +24,7 @@ export function InboxScreen() {
     update,
     archive,
     analyze,
+    applyTaskProposal,
   } = useInboxStore()
 
   useEffect(() => {
@@ -43,6 +44,10 @@ export function InboxScreen() {
 
   const handleDelete = async (id: string) => {
     if (await archive(id)) setPendingDeleteId(null)
+  }
+
+  const handleApplyTaskProposal = async (id: string) => {
+    await applyTaskProposal(id)
   }
 
   return (
@@ -181,12 +186,12 @@ export function InboxScreen() {
                         <div className="flex gap-2">
                           <button
                             className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs text-text-muted hover:text-text disabled:opacity-40"
-                            disabled={mutating || !inTauri}
+                            disabled={mutating || !inTauri || item.status === 'CONVERTED'}
                             onClick={() => void analyze(item.id)}
                           >
                             <Sparkles className="h-3.5 w-3.5" />
                             {mutating
-                              ? 'Analyzing…'
+                              ? 'Working…'
                               : aiProvider === 'nim'
                                 ? 'Analyze with NIM'
                                 : 'Preview mock'}
@@ -236,10 +241,38 @@ export function InboxScreen() {
                               Next step: {item.analysis.analysis.next_step}
                             </p>
                           )}
-                          <p className="mt-1 text-xs text-text-muted">
-                            This is a saved proposal; it has not created or
-                            changed any project or task.
-                          </p>
+                          {item.status === 'CONVERTED' ? (
+                            <p className="mt-2 text-xs text-success">
+                              Task created and recorded in the audit trail.
+                            </p>
+                          ) : item.analysis.provider === 'nim' &&
+                            item.analysis.analysis.kind === 'TASK' &&
+                            item.analysis.analysis.actionability ===
+                              'ACTIONABLE' &&
+                            item.analysis.analysis.next_step?.trim() ? (
+                            <div className="mt-3 flex flex-wrap items-center gap-3">
+                              <button
+                                className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90 disabled:opacity-40"
+                                disabled={!inTauri || mutating}
+                                onClick={() =>
+                                  void handleApplyTaskProposal(item.id)
+                                }
+                              >
+                                {mutating
+                                  ? 'Creating task…'
+                                  : 'Confirm and create task'}
+                              </button>
+                              <p className="text-xs text-text-muted">
+                                Your confirmation is required. The note stays
+                                unchanged; the task is linked to it for audit.
+                              </p>
+                            </div>
+                          ) : (
+                            <p className="mt-2 text-xs text-text-muted">
+                              This proposal needs review and has not created a
+                              task or project.
+                            </p>
+                          )}
                         </div>
                       )}
                       {pendingDeleteId === item.id && (
