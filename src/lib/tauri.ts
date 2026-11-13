@@ -7,9 +7,11 @@ import type {
   GoalSidecarEntry,
   FocusSession,
   GithubRepository,
+  GithubSourceSummary,
   InboxItem,
   Project,
   ProjectInput,
+  PortfolioReport,
   Task,
 } from '../shared/contracts'
 
@@ -77,4 +79,15 @@ export const bridge = {
   githubTokenRemove: (): Promise<void> => invoke('github_token_remove'),
   githubRepositories: (): Promise<GithubRepository[]> =>
     invoke('github_repositories'),
+  githubInspectRepository: (fullName: string): Promise<GithubSourceSummary> =>
+    invoke('github_inspect_repository', { fullName }),
+  portfolioAssessmentsList: (): Promise<PortfolioReport[]> =>
+    invoke('portfolio_assessments_list'),
+  portfolioAnalyzeRepository: (
+    fullName: string,
+    confirmedSummary: GithubSourceSummary,
+  ): Promise<PortfolioReport> =>
+    invoke('portfolio_analyze_repository', { fullName, confirmedSummary }),
+  portfolioSaveDraft: (id: string, draftMarkdown: string): Promise<void> =>
+    invoke('portfolio_save_draft', { id, draftMarkdown }),
 } as const

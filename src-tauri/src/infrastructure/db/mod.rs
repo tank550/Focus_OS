@@ -46,8 +46,8 @@ pub struct Migration {
 }
 
 /// Ordered, immutable migration set. Add new versions by appending — never edit
-/// an applied migration. The embedded file is a byte-identical copy of
-/// `docs/SQLITE_SCHEMA.sql` (hashes are pinned in the phase-1 notes).
+/// an applied migration. The complete schema is documented in
+/// `docs/SQLITE_SCHEMA.sql`.
 pub const MIGRATIONS: &[Migration] = &[
     Migration {
         version: 1,
@@ -63,6 +63,14 @@ pub const MIGRATIONS: &[Migration] = &[
         sql: include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/migrations/0002_goal_sidecar.sql"
+        )),
+    },
+    Migration {
+        version: 3,
+        name: "portfolio_assessments",
+        sql: include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/migrations/0003_portfolio_assessments.sql"
         )),
     },
 ];

@@ -21,15 +21,15 @@ fn migrations_apply_cleanly_and_are_idempotent() {
 
     let pool = db::open(&path).expect("open db");
     let mut conn = pool.get().expect("lease conn");
-    assert_eq!(db::migrations_applied(&mut conn).unwrap(), 2);
-    assert_eq!(db::count_tables(&mut conn).unwrap(), 22);
+    assert_eq!(db::migrations_applied(&mut conn).unwrap(), 3);
+    assert_eq!(db::count_tables(&mut conn).unwrap(), 23);
 
     // Second open against the same file must be a migration no-op.
     drop(conn);
     drop(pool);
     let pool2 = db::open(&path).expect("re-open db");
     let mut conn2 = pool2.get().expect("lease conn 2");
-    assert_eq!(db::migrations_applied(&mut conn2).unwrap(), 2);
+    assert_eq!(db::migrations_applied(&mut conn2).unwrap(), 3);
 
     drop(conn2);
     drop(pool2);
@@ -93,6 +93,7 @@ fn schema_expected_tables_exist() {
     let expected = [
         "goals",
         "goal_sidecar_entries",
+        "portfolio_assessments",
         "milestones",
         "projects",
         "tasks",

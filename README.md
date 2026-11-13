@@ -66,7 +66,8 @@ ambiguous proposals still require the remaining agent workflow. Configure the
 NIM model and API key in Settings. The mock provider is for offline UI/testing
 only and cannot create tasks.
 
-Settings can connect GitHub with a fine-grained read-only token and manually
-list repositories owned by the account. Source scanning, project scoring, and
-portfolio/CV draft generation are not implemented yet; GitHub content is not
-sent to NVIDIA.
+Settings can connect GitHub with a fine-grained read-only token, manually list
+repositories owned by the account, and inspect a selected repository locally.
+After a separate confirmation, the app sends only the displayed derived
+summary to NVIDIA NIM for a portfolio assessment and editable CV draft. The
+assessment and draft are stored locally; raw GitHub source is never sent.

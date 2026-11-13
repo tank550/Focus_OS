@@ -4,7 +4,12 @@ import { minutesToLabel } from '../../lib/date'
 import { bridge } from '../../lib/tauri'
 import { useAppStore } from '../../stores/appStore'
 import { useSettingsStore } from '../../stores/settingsStore'
-import type { AiSettings, GithubRepository } from '../../shared/contracts'
+import type {
+  AiSettings,
+  GithubRepository,
+  GithubSourceSummary,
+  PortfolioReport,
+} from '../../shared/contracts'
 
 const inputClass =
   'w-full rounded-md border border-border bg-surface-2 px-3 py-2 text-sm outline-none focus:border-accent'
@@ -27,9 +32,23 @@ export function SettingsScreen() {
   const [githubRepositories, setGithubRepositories] = useState<
     GithubRepository[]
   >([])
+  const [githubSourceSummary, setGithubSourceSummary] =
+    useState<GithubSourceSummary | null>(null)
   const [githubBusy, setGithubBusy] = useState(false)
   const [githubMessage, setGithubMessage] = useState<string | null>(null)
   const [githubError, setGithubError] = useState<string | null>(null)
+  const [portfolioReports, setPortfolioReports] = useState<PortfolioReport[]>([])
+  const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(
+    null,
+  )
+  const [portfolioDraft, setPortfolioDraft] = useState('')
+  const [portfolioBusy, setPortfolioBusy] = useState(false)
+  const [portfolioMessage, setPortfolioMessage] = useState<string | null>(null)
+  const [portfolioError, setPortfolioError] = useState<string | null>(null)
+
+  const selectedPortfolio = portfolioReports.find(
+    (report) => report.id === selectedPortfolioId,
+  )
 
   useEffect(() => {
     setAiConfig(settings.ai)
@@ -46,6 +65,30 @@ export function SettingsScreen() {
       .catch((reason) => {
         if (active)
           setGithubError(
+            reason instanceof Error ? reason.message : String(reason),
+          )
+      })
+    return () => {
+      active = false
+    }
+  }, [inTauri])
+
+  useEffect(() => {
+    if (!inTauri) return
+    let active = true
+    void bridge
+      .portfolioAssessmentsList()
+      .then((reports) => {
+        if (!active) return
+        setPortfolioReports(reports)
+        if (reports[0]) {
+          setSelectedPortfolioId(reports[0].id)
+          setPortfolioDraft(reports[0].draftMarkdown)
+        }
+      })
+      .catch((reason) => {
+        if (active)
+          setPortfolioError(
             reason instanceof Error ? reason.message : String(reason),
           )
       })
@@ -131,6 +174,79 @@ export function SettingsScreen() {
     }
   }
 
+  const inspectGithubRepository = async (fullName: string) => {
+    setGithubBusy(true)
+    setGithubError(null)
+    setGithubMessage(null)
+    setGithubSourceSummary(null)
+    try {
+      const summary = await bridge.githubInspectRepository(fullName)
+      setGithubSourceSummary(summary)
+      setGithubMessage(
+        'Repository inspected locally. Source contents were not sent to NVIDIA.',
+      )
+    } catch (reason) {
+      setGithubError(reason instanceof Error ? reason.message : String(reason))
+    } finally {
+      setGithubBusy(false)
+    }
+  }
+
+  const analyzePortfolioRepository = async () => {
+    if (!githubSourceSummary) return
+    setPortfolioBusy(true)
+    setPortfolioError(null)
+    setPortfolioMessage(null)
+    try {
+      const report = await bridge.portfolioAnalyzeRepository(
+        githubSourceSummary.fullName,
+        githubSourceSummary,
+      )
+      setPortfolioReports((reports) => [
+        report,
+        ...reports.filter((item) => item.id !== report.id),
+      ])
+      setSelectedPortfolioId(report.id)
+      setPortfolioDraft(report.draftMarkdown)
+      setPortfolioMessage('Portfolio assessment saved on this device.')
+    } catch (reason) {
+      setPortfolioError(reason instanceof Error ? reason.message : String(reason))
+    } finally {
+      setPortfolioBusy(false)
+    }
+  }
+
+  const selectPortfolioReport = (report: PortfolioReport) => {
+    setSelectedPortfolioId(report.id)
+    setPortfolioDraft(report.draftMarkdown)
+    setPortfolioMessage(null)
+    setPortfolioError(null)
+  }
+
+  const savePortfolioDraft = async () => {
+    if (!selectedPortfolio) return
+    setPortfolioBusy(true)
+    setPortfolioError(null)
+    setPortfolioMessage(null)
+    try {
+      await bridge.portfolioSaveDraft(selectedPortfolio.id, portfolioDraft)
+      const updatedAt = Date.now()
+      setPortfolioReports((reports) =>
+        reports.map((report) =>
+          report.id === selectedPortfolio.id
+            ? { ...report, draftMarkdown: portfolioDraft.trim(), updatedAt }
+            : report,
+        ),
+      )
+      setPortfolioDraft(portfolioDraft.trim())
+      setPortfolioMessage('Portfolio draft saved.')
+    } catch (reason) {
+      setPortfolioError(reason instanceof Error ? reason.message : String(reason))
+    } finally {
+      setPortfolioBusy(false)
+    }
+  }
+
   const disconnectGithub = async () => {
     setGithubBusy(true)
     setGithubError(null)
@@ -139,6 +255,7 @@ export function SettingsScreen() {
       await bridge.githubTokenRemove()
       setGithubConnected(false)
       setGithubRepositories([])
+      setGithubSourceSummary(null)
       setGithubToken('')
       setGithubMessage('GitHub token removed from the OS credential store.')
     } catch (reason) {
@@ -288,9 +405,11 @@ export function SettingsScreen() {
             <p className="text-xs leading-relaxed text-text-muted">
               Grant Metadata: Read-only and Contents: Read-only for all
               repositories. The token is stored in the OS credential store.
-              This first step lists repository details only; source scanning
-              and portfolio analysis are not enabled yet. Nothing is sent to
-              NVIDIA by this integration.
+              Inspection reads up to 12 small source/test files locally to
+              derive counts; raw source is neither stored nor sent to NVIDIA.
+              Portfolio evaluation sends only the exact derived summary shown
+              below to your configured NIM endpoint, after you confirm. Source
+              contents are never sent.
             </p>
             <p className="text-xs text-text-muted" role="status">
               {githubConnected ? 'Token stored securely.' : 'Not connected.'}
@@ -354,7 +473,7 @@ export function SettingsScreen() {
                 {githubRepositories.map((repository) => (
                   <li
                     key={repository.id}
-                    className="border-b border-border px-3 py-2 last:border-b-0"
+                    className="border-b border-border px-3 py-3 last:border-b-0"
                   >
                     <p className="text-sm font-medium">{repository.fullName}</p>
                     <p className="mt-1 text-xs text-text-muted">
@@ -367,9 +486,171 @@ export function SettingsScreen() {
                         {repository.description}
                       </p>
                     )}
+                    <button
+                      type="button"
+                      className="mt-2 rounded-md border border-border px-3 py-1.5 text-xs text-text-muted hover:text-text disabled:opacity-40"
+                      onClick={() =>
+                        void inspectGithubRepository(repository.fullName)
+                      }
+                      disabled={githubBusy}
+                    >
+                      {githubBusy ? 'Inspecting…' : 'Inspect source locally'}
+                    </button>
+                    {githubSourceSummary?.fullName === repository.fullName && (
+                      <div className="mt-3 rounded-md border border-border bg-surface-2 p-3">
+                        <p className="text-xs font-medium">
+                          Local source profile · {githubSourceSummary.defaultBranch}
+                        </p>
+                        <p className="mt-1 text-xs text-text-muted">
+                          {githubSourceSummary.sourceFileCount} source files ·{' '}
+                          {githubSourceSummary.testFileCount} test files ·{' '}
+                          {githubSourceSummary.documentationFileCount} docs ·{' '}
+                          {githubSourceSummary.inspectedFileCount} inspected ·{' '}
+                          {githubSourceSummary.inspectedLines} nonblank lines ·{' '}
+                          {githubSourceSummary.declarationsFound} declarations
+                        </p>
+                        <p className="mt-1 text-xs text-text-muted">
+                          Languages:{' '}
+                          {Object.entries(githubSourceSummary.languages)
+                            .map(([language, bytes]) => `${language} (${bytes} B)`)
+                            .join(', ') || 'not detected'}
+                        </p>
+                        <p className="mt-1 text-xs text-text-muted">
+                          README: {githubSourceSummary.hasReadme ? 'yes' : 'no'}
+                          {githubSourceSummary.manifestFiles.length > 0 &&
+                            ` · manifests: ${githubSourceSummary.manifestFiles.join(', ')}`}
+                        </p>
+                        <div className="mt-3 rounded-md border border-border p-3">
+                          <p className="text-xs font-medium">
+                            Confirm before AI evaluation
+                          </p>
+                          <p className="mt-1 text-xs text-text-muted">
+                            Review the exact derived summary that will be sent
+                            to your configured NIM endpoint. It contains no
+                            source code or file contents.
+                          </p>
+                          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-[11px] text-text-muted">
+                            {JSON.stringify(githubSourceSummary, null, 2)}
+                          </pre>
+                          <button
+                            type="button"
+                            className="mt-3 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90 disabled:opacity-40"
+                            onClick={() => void analyzePortfolioRepository()}
+                            disabled={
+                              !inTauri ||
+                              portfolioBusy ||
+                              !settings.ai.enabled ||
+                              settings.ai.provider !== 'nim' ||
+                              !settings.ai.model?.trim() ||
+                              !settings.ai.apiKeyStored
+                            }
+                          >
+                            {portfolioBusy
+                              ? 'Analyzing…'
+                              : 'Confirm and send summary to NIM'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>
+            )}
+            {portfolioError && (
+              <p className="text-xs text-danger" role="alert">
+                {portfolioError}
+              </p>
+            )}
+            {portfolioMessage && (
+              <p className="text-xs text-text-muted" role="status">
+                {portfolioMessage}
+              </p>
+            )}
+            {portfolioReports.length > 0 && (
+              <section className="flex flex-col gap-3 border-t border-border pt-4">
+                <h3 className="text-sm font-medium">Portfolio assessments</h3>
+                <div className="flex flex-wrap gap-2">
+                  {portfolioReports.map((report) => (
+                    <button
+                      key={report.id}
+                      type="button"
+                      className={`rounded-md border px-3 py-1.5 text-xs ${
+                        report.id === selectedPortfolioId
+                          ? 'border-accent text-accent'
+                          : 'border-border text-text-muted hover:text-text'
+                      }`}
+                      onClick={() => selectPortfolioReport(report)}
+                    >
+                      {report.repoFullName} · {report.evaluation.readinessScore}/100
+                    </button>
+                  ))}
+                </div>
+                {selectedPortfolio && (
+                  <div className="flex flex-col gap-3 rounded-md border border-border bg-surface-2 p-3">
+                    <div>
+                      <p className="text-sm font-medium">
+                        {selectedPortfolio.repoFullName} ·{' '}
+                        {selectedPortfolio.evaluation.readinessScore}/100
+                      </p>
+                      <p className="mt-1 text-xs leading-relaxed text-text-muted">
+                        {selectedPortfolio.evaluation.projectSummary}
+                      </p>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <p className="text-xs font-medium">Strengths</p>
+                        <ul className="mt-1 list-disc pl-4 text-xs text-text-muted">
+                          {selectedPortfolio.evaluation.strengths.map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium">Gaps to address</p>
+                        <ul className="mt-1 list-disc pl-4 text-xs text-text-muted">
+                          {selectedPortfolio.evaluation.gaps.length > 0 ? (
+                            selectedPortfolio.evaluation.gaps.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))
+                          ) : (
+                            <li>No gaps were identified.</li>
+                          )}
+                        </ul>
+                      </div>
+                    </div>
+                    <label className="flex flex-col gap-1.5 text-xs text-text-muted">
+                      Editable CV / portfolio draft ·{' '}
+                      {portfolioDraft.length}/12,000 characters
+                      <textarea
+                        className={`${inputClass} min-h-56 resize-y font-mono`}
+                        value={portfolioDraft}
+                        maxLength={12000}
+                        onChange={(event) => setPortfolioDraft(event.target.value)}
+                        disabled={portfolioBusy}
+                      />
+                    </label>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        type="button"
+                        className="rounded-md border border-border px-3 py-1.5 text-xs text-text-muted hover:text-text disabled:opacity-40"
+                        onClick={() => void savePortfolioDraft()}
+                        disabled={
+                          !inTauri ||
+                          portfolioBusy ||
+                          !portfolioDraft.trim() ||
+                          portfolioDraft === selectedPortfolio.draftMarkdown
+                        }
+                      >
+                        {portfolioBusy ? 'Saving…' : 'Save draft'}
+                      </button>
+                      <p className="text-[11px] text-text-muted">
+                        AI confidence: {Math.round(selectedPortfolio.evaluation.confidence * 100)}%.
+                        Verify every claim before using it.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </section>
             )}
           </div>
         </Card>

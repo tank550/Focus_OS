@@ -103,6 +103,42 @@ export interface GithubRepository {
   updatedAt: string
 }
 
+export interface GithubSourceSummary {
+  fullName: string
+  defaultBranch: string
+  description: string | null
+  topics: string[]
+  languages: Record<string, number>
+  sourceFileCount: number
+  testFileCount: number
+  documentationFileCount: number
+  manifestFiles: string[]
+  hasReadme: boolean
+  inspectedFileCount: number
+  inspectedLines: number
+  declarationsFound: number
+}
+
+export interface PortfolioEvaluation {
+  readinessScore: number
+  projectSummary: string
+  strengths: string[]
+  gaps: string[]
+  resumeBullets: string[]
+  verificationNotes: string[]
+  confidence: number
+}
+
+export interface PortfolioReport {
+  id: string
+  repoFullName: string
+  sourceSummary: GithubSourceSummary
+  evaluation: PortfolioEvaluation
+  draftMarkdown: string
+  createdAt: number
+  updatedAt: number
+}
+
 export interface Goal {
   id: string
   title: string

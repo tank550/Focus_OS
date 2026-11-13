@@ -1224,6 +1224,7 @@ dependencies = [
 name = "focus-os"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
  "focus-domain",
  "keyring",
  "r2d2",
