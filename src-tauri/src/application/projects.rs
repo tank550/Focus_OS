@@ -9,6 +9,13 @@ use crate::infrastructure::db::DbError;
 use crate::infrastructure::repositories::projects_repo::{ProjectRecord, ProjectsRepo};
 use crate::state::AppState;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentProjectDraft {
+    pub name: String,
+    pub description: Option<String>,
+    pub priority: u16,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Project {
@@ -121,6 +128,32 @@ pub fn create(
     )?;
     tx.commit().map_err(DbError::from)?;
     Ok(project)
+}
+
+pub(crate) fn create_from_agent_in_transaction(
+    tx: &rusqlite::Transaction<'_>,
+    draft: AgentProjectDraft,
+) -> Result<Project, ProjectsError> {
+    let (name, status) = validate_input(&draft.name, "BACKLOG", draft.priority)?;
+    let description = draft
+        .description
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned);
+    let now = UtcMillis::now().0;
+    let record = ProjectRecord {
+        id: EntityId::new().to_string(),
+        name,
+        description,
+        status,
+        priority: draft.priority,
+        progress: 0.0,
+        created_at: now,
+        updated_at: now,
+    };
+    ProjectsRepo::insert(tx, &record)?;
+    Ok(Project::from(record))
 }
 
 pub fn update(

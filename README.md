@@ -63,11 +63,13 @@ cargo test               # headless domain + SQLite integration tests
 9. Nothing is ever deleted silently.
 10. Favor meaningful progress over task-completion metrics.
 
-The Inbox can save an analysis proposal from NVIDIA NIM. A user-confirmed,
-actionable task proposal can create an audited task; project creation and
-ambiguous proposals still require the remaining agent workflow. Configure the
-NIM model and API key in Settings. The mock provider is for offline UI/testing
-only and cannot create tasks.
+The Inbox can save an analysis proposal from NVIDIA NIM. Its bounded Rust
+agent harness currently accepts only actionable task or project proposals.
+After confirmation, it creates and audits a task, or a project with an optional
+first task, atomically; retries do not duplicate the result. Other proposal
+types remain suggestions. Configure the NIM model and API key in Settings. The
+mock provider is for offline UI/testing only and cannot create projects or
+tasks.
 
 Settings can connect GitHub with a fine-grained read-only token, manually list
 repositories owned by the account, and inspect a selected repository locally.

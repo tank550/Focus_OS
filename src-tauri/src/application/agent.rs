@@ -5,6 +5,7 @@ use focus_domain::ids::EntityId;
 use focus_domain::value_objects::UtcMillis;
 
 use crate::application::inbox::InboxError;
+use crate::application::projects::{self, AgentProjectDraft, Project, ProjectsError};
 use crate::application::settings::{self, AiSettings};
 use crate::application::tasks::{self, AgentTaskDraft, Task, TasksError};
 use crate::infrastructure::ai::{
@@ -12,8 +13,11 @@ use crate::infrastructure::ai::{
     BrainDumpAnalysis, MockProvider, NimProvider,
 };
 use crate::infrastructure::db::DbError;
-use crate::infrastructure::repositories::autonomy_repo::{AutonomyDecisionRecord, AutonomyRepo};
+use crate::infrastructure::repositories::autonomy_repo::{
+    AutonomyDecisionRecord, AutonomyRepo, ConfirmedInboxAction,
+};
 use crate::infrastructure::repositories::inbox_repo::{AnalysisProposal, InboxRepo};
+use crate::infrastructure::repositories::projects_repo::ProjectsRepo;
 use crate::infrastructure::repositories::tasks_repo::TasksRepo;
 use crate::infrastructure::secrets::{self, SecretError};
 use crate::state::AppState;
@@ -40,10 +44,14 @@ pub enum AgentError {
     Serialization(String),
     #[error("This note has no pending proposal to apply")]
     ProposalNotFound,
-    #[error("Only actionable task proposals with a next step can create a task")]
-    ProposalNotApplicable,
     #[error("The previously created task for this proposal could not be found")]
     AppliedTaskNotFound,
+    #[error("The previously created project for this proposal could not be found")]
+    AppliedProjectNotFound,
+    #[error("Only actionable task or project proposals can be applied")]
+    UnsupportedOperation,
+    #[error("The project proposal does not include a project name")]
+    MissingProjectName,
     #[error(transparent)]
     Provider(#[from] AiProviderError),
     #[error(transparent)]
@@ -52,6 +60,8 @@ pub enum AgentError {
     Inbox(#[from] InboxError),
     #[error(transparent)]
     Task(#[from] TasksError),
+    #[error(transparent)]
+    Project(#[from] ProjectsError),
     #[error(transparent)]
     Database(#[from] DbError),
 }
@@ -62,10 +72,99 @@ struct StoredAnalysis {
     analysis: BrainDumpAnalysis,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct TaskActionResult {
-    task_id: String,
+struct AppliedProposalPayload {
+    #[serde(default)]
+    project_id: Option<String>,
+    #[serde(default)]
+    task_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppliedInboxProposal {
+    pub project: Option<Project>,
+    pub task: Option<Task>,
+}
+
+enum ProposedOperation {
+    CreateTask(AgentTaskDraft),
+    CreateProject {
+        project: AgentProjectDraft,
+        first_task: Option<AgentTaskDraft>,
+    },
+}
+
+impl ProposedOperation {
+    fn action_type(&self) -> ConfirmedInboxAction {
+        match self {
+            Self::CreateTask(_) => ConfirmedInboxAction::CreateTask,
+            Self::CreateProject { .. } => ConfirmedInboxAction::CreateProject,
+        }
+    }
+}
+
+fn validated_operation(
+    provider: AiProviderKind,
+    analysis: BrainDumpAnalysis,
+    raw_text: &str,
+    inbox_item_id: &str,
+) -> Result<ProposedOperation, AgentError> {
+    if provider != AiProviderKind::Nim || analysis.actionability != Actionability::Actionable {
+        return Err(AgentError::UnsupportedOperation);
+    }
+    if analysis.estimated_duration_minutes == 0 || analysis.priority > 100 {
+        return Err(AgentError::UnsupportedOperation);
+    }
+    let next_step = analysis
+        .next_step
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned);
+
+    match analysis.kind {
+        AnalysisKind::Task => {
+            let title = next_step.ok_or(AgentError::UnsupportedOperation)?;
+            Ok(ProposedOperation::CreateTask(AgentTaskDraft {
+                title,
+                description: Some(format!("Created from Inbox note {inbox_item_id}")),
+                project_id: None,
+                goal_id: None,
+                estimated_minutes: analysis.estimated_duration_minutes,
+                priority: u16::from(analysis.priority),
+                requires_deep_work: false,
+            }))
+        }
+        AnalysisKind::Project => {
+            let name = analysis
+                .project_guess
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+                .ok_or(AgentError::MissingProjectName)?;
+            let first_task = next_step.map(|title| AgentTaskDraft {
+                title,
+                description: Some(format!("First step from Inbox note {inbox_item_id}")),
+                project_id: None,
+                goal_id: None,
+                estimated_minutes: analysis.estimated_duration_minutes,
+                priority: u16::from(analysis.priority),
+                requires_deep_work: false,
+            });
+            Ok(ProposedOperation::CreateProject {
+                project: AgentProjectDraft {
+                    name,
+                    description: Some(raw_text.trim().to_owned()),
+                    priority: u16::from(analysis.priority),
+                },
+                first_task,
+            })
+        }
+        _ => Err(AgentError::UnsupportedOperation),
+    }
 }
 
 pub async fn analyze_inbox_note(
@@ -155,54 +254,69 @@ pub async fn analyze_inbox_note(
     Ok(result)
 }
 
-pub fn apply_task_proposal(state: &AppState, inbox_item_id: &str) -> Result<Task, AgentError> {
+pub fn apply_proposal(
+    state: &AppState,
+    inbox_item_id: &str,
+) -> Result<AppliedInboxProposal, AgentError> {
     let mut conn = state.conn()?;
     let tx = conn
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(DbError::from)?;
 
     let Some(proposal) = InboxRepo::pending_proposal(&tx, inbox_item_id)? else {
-        if let Some(result_payload) = InboxRepo::applied_task_action(&tx, inbox_item_id)? {
-            let result: TaskActionResult = serde_json::from_str(&result_payload)
+        if let Some(result_payload) = InboxRepo::applied_proposal_action(&tx, inbox_item_id)? {
+            let result: AppliedProposalPayload = serde_json::from_str(&result_payload)
                 .map_err(|error| AgentError::Serialization(error.to_string()))?;
-            let record =
-                TasksRepo::get(&tx, &result.task_id)?.ok_or(AgentError::AppliedTaskNotFound)?;
-            return Ok(Task::try_from(record)?);
+            let project = result
+                .project_id
+                .map(|project_id| {
+                    ProjectsRepo::get(&tx, &project_id)?
+                        .map(Project::from)
+                        .ok_or(AgentError::AppliedProjectNotFound)
+                })
+                .transpose()?;
+            let task = result
+                .task_id
+                .map(|task_id| {
+                    TasksRepo::get(&tx, &task_id)?
+                        .map(Task::try_from)
+                        .transpose()?
+                        .ok_or(AgentError::AppliedTaskNotFound)
+                })
+                .transpose()?;
+            return Ok(AppliedInboxProposal { project, task });
         }
         return Err(AgentError::ProposalNotFound);
     };
 
     let stored: StoredAnalysis = serde_json::from_str(&proposal.proposal)
         .map_err(|error| AgentError::Serialization(error.to_string()))?;
-    if stored.provider != AiProviderKind::Nim {
-        return Err(AgentError::ProposalNotApplicable);
-    }
-    let analysis = stored.analysis;
-    if analysis.kind != AnalysisKind::Task || analysis.actionability != Actionability::Actionable {
-        return Err(AgentError::ProposalNotApplicable);
-    }
-    let title = analysis
-        .next_step
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .ok_or(AgentError::ProposalNotApplicable)?;
-    if analysis.estimated_duration_minutes == 0 || analysis.priority > 100 {
-        return Err(AgentError::ProposalNotApplicable);
-    }
-
-    let task = tasks::create_from_agent_in_transaction(
-        &tx,
-        AgentTaskDraft {
-            title: title.to_owned(),
-            description: Some(format!("Created from Inbox note {inbox_item_id}")),
-            project_id: None,
-            goal_id: None,
-            estimated_minutes: analysis.estimated_duration_minutes,
-            priority: u16::from(analysis.priority),
-            requires_deep_work: false,
-        },
+    let operation = validated_operation(
+        stored.provider,
+        stored.analysis,
+        &proposal.raw_text,
+        inbox_item_id,
     )?;
+    let action_type = operation.action_type();
+    let (project, task) = match operation {
+        ProposedOperation::CreateTask(draft) => (
+            None,
+            Some(tasks::create_from_agent_in_transaction(&tx, draft)?),
+        ),
+        ProposedOperation::CreateProject {
+            project: project_draft,
+            first_task,
+        } => {
+            let project = projects::create_from_agent_in_transaction(&tx, project_draft)?;
+            let task = first_task
+                .map(|mut draft| {
+                    draft.project_id = Some(project.id.clone());
+                    tasks::create_from_agent_in_transaction(&tx, draft)
+                })
+                .transpose()?;
+            (Some(project), task)
+        }
+    };
     let now = UtcMillis::now().0;
     if !InboxRepo::approve_proposal(&tx, inbox_item_id, &proposal.id, now)? {
         return Err(AgentError::ProposalNotFound);
@@ -210,24 +324,39 @@ pub fn apply_task_proposal(state: &AppState, inbox_item_id: &str) -> Result<Task
 
     let policy = serde_json::json!({
         "decision": "explicit_user_confirmation",
-        "scope": "create_task_from_actionable_task_proposal",
+        "harness": "validated_closed_operation_v1",
+        "scope": action_type.as_str(),
     })
     .to_string();
-    let result_payload = serde_json::to_string(&TaskActionResult {
-        task_id: task.id.clone(),
+    let result_payload = serde_json::to_string(&AppliedProposalPayload {
+        project_id: project.as_ref().map(|value| value.id.clone()),
+        task_id: task.as_ref().map(|value| value.id.clone()),
     })
     .map_err(|error| AgentError::Serialization(error.to_string()))?;
-    let related_task_ids = serde_json::to_string(std::slice::from_ref(&task.id))
-        .map_err(|error| AgentError::Serialization(error.to_string()))?;
+    let related_task_ids = serde_json::to_string(
+        &task
+            .as_ref()
+            .map(|value| vec![value.id.clone()])
+            .unwrap_or_default(),
+    )
+    .map_err(|error| AgentError::Serialization(error.to_string()))?;
     let decision_id = EntityId::new().to_string();
-    AutonomyRepo::insert_confirmed_task_from_inbox(
+    AutonomyRepo::insert_confirmed_inbox_action(
         &tx,
+        action_type,
         &AutonomyDecisionRecord {
             id: &decision_id,
             action_id: &proposal.id,
             occurred_at: now,
             policy: &policy,
-            reason: "The user explicitly approved creating this task from the Inbox proposal.",
+            reason: match action_type {
+                ConfirmedInboxAction::CreateTask => {
+                    "The user explicitly approved creating this task from the Inbox proposal."
+                }
+                ConfirmedInboxAction::CreateProject => {
+                    "The user explicitly approved creating this project from the Inbox proposal."
+                }
+            },
             proposed_payload: &proposal.proposal,
             result_payload: &result_payload,
             related_task_ids: &related_task_ids,
@@ -235,7 +364,7 @@ pub fn apply_task_proposal(state: &AppState, inbox_item_id: &str) -> Result<Task
     )?;
 
     tx.commit().map_err(DbError::from)?;
-    Ok(task)
+    Ok(AppliedInboxProposal { project, task })
 }
 
 #[cfg(test)]
@@ -252,25 +381,19 @@ mod tests {
         (directory, AppState::new(pool, database_path))
     }
 
-    fn add_task_proposal(state: &AppState, inbox_item_id: &str, provider: AiProviderKind) {
+    fn add_proposal(
+        state: &AppState,
+        inbox_item_id: &str,
+        provider: AiProviderKind,
+        analysis: BrainDumpAnalysis,
+    ) {
         let conn = state.conn().unwrap();
         let note = InboxRepo::get(&conn, inbox_item_id)
             .unwrap()
             .expect("captured note exists");
         let serialized = serde_json::to_string(&StoredAnalysis {
             provider,
-            analysis: BrainDumpAnalysis {
-                kind: AnalysisKind::Task,
-                project_guess: None,
-                goal_guess: None,
-                estimated_duration_minutes: 25,
-                priority: 60,
-                deadline: None,
-                actionability: Actionability::Actionable,
-                next_step: Some("Draft the first section".into()),
-                dependencies: None,
-                confidence: 0.9,
-            },
+            analysis: analysis.clone(),
         })
         .unwrap();
         let mut conn = conn;
@@ -284,13 +407,53 @@ mod tests {
                 expected_updated_at: note.updated_at,
                 proposal_id: &proposal_id,
                 proposal_json: &serialized,
-                kind: "TASK",
-                confidence: 0.9,
+                kind: analysis.kind.as_str(),
+                confidence: analysis.confidence,
                 analyzed_at: UtcMillis::now().0,
             }
         )
         .unwrap());
         tx.commit().unwrap();
+    }
+
+    fn add_task_proposal(state: &AppState, inbox_item_id: &str, provider: AiProviderKind) {
+        add_proposal(
+            state,
+            inbox_item_id,
+            provider,
+            BrainDumpAnalysis {
+                kind: AnalysisKind::Task,
+                project_guess: None,
+                goal_guess: None,
+                estimated_duration_minutes: 25,
+                priority: 60,
+                deadline: None,
+                actionability: Actionability::Actionable,
+                next_step: Some("Draft the first section".into()),
+                dependencies: None,
+                confidence: 0.9,
+            },
+        );
+    }
+
+    fn add_project_proposal(state: &AppState, inbox_item_id: &str, next_step: Option<&str>) {
+        add_proposal(
+            state,
+            inbox_item_id,
+            AiProviderKind::Nim,
+            BrainDumpAnalysis {
+                kind: AnalysisKind::Project,
+                project_guess: Some("Launch the newsletter".into()),
+                goal_guess: None,
+                estimated_duration_minutes: 30,
+                priority: 70,
+                deadline: None,
+                actionability: Actionability::Actionable,
+                next_step: next_step.map(str::to_owned),
+                dependencies: None,
+                confidence: 0.9,
+            },
+        );
     }
 
     #[tokio::test]
@@ -335,7 +498,8 @@ mod tests {
         let note = inbox::capture(&state, "I need to write the report").unwrap();
         add_task_proposal(&state, &note.id, AiProviderKind::Nim);
 
-        let task = apply_task_proposal(&state, &note.id).unwrap();
+        let applied = apply_proposal(&state, &note.id).unwrap();
+        let task = applied.task.unwrap();
         assert_eq!(task.title, "Draft the first section");
         assert_eq!(task.estimated_minutes, 25);
         assert_eq!(task.priority, 60);
@@ -344,7 +508,7 @@ mod tests {
             Some(format!("Created from Inbox note {}", note.id).as_str())
         );
 
-        let retried_task = apply_task_proposal(&state, &note.id).unwrap();
+        let retried_task = apply_proposal(&state, &note.id).unwrap().task.unwrap();
         assert_eq!(retried_task.id, task.id);
 
         let updated_note = inbox::list(&state).unwrap().remove(0);
@@ -382,8 +546,8 @@ mod tests {
         add_task_proposal(&state, &note.id, AiProviderKind::Mock);
 
         assert!(matches!(
-            apply_task_proposal(&state, &note.id),
-            Err(AgentError::ProposalNotApplicable)
+            apply_proposal(&state, &note.id),
+            Err(AgentError::UnsupportedOperation)
         ));
         assert!(crate::application::tasks::list_open(&state)
             .unwrap()
@@ -411,7 +575,7 @@ mod tests {
         }
 
         assert!(matches!(
-            apply_task_proposal(&state, &note.id),
+            apply_proposal(&state, &note.id),
             Err(AgentError::Database(_))
         ));
         let conn = state.conn().unwrap();
@@ -425,6 +589,108 @@ mod tests {
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .unwrap();
+        assert_eq!(task_count, 0);
+        assert_eq!(proposal_status, "PENDING");
+        assert_eq!(inbox_status, "PROPOSED");
+
+        drop(conn);
+        drop(state);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn confirmed_project_proposal_creates_project_and_first_task_once() {
+        let (directory, state) = test_state();
+        let note = inbox::capture(&state, "I want to launch a newsletter").unwrap();
+        add_project_proposal(&state, &note.id, Some("Draft the first issue"));
+
+        let applied = apply_proposal(&state, &note.id).unwrap();
+        let project = applied.project.unwrap();
+        let task = applied.task.unwrap();
+        assert_eq!(project.name, "Launch the newsletter");
+        assert_eq!(project.description.as_deref(), Some(note.raw_text.as_str()));
+        assert_eq!(project.status, "BACKLOG");
+        assert_eq!(task.title, "Draft the first issue");
+        assert_eq!(task.project_id.as_deref(), Some(project.id.as_str()));
+
+        let retried = apply_proposal(&state, &note.id).unwrap();
+        assert_eq!(retried.project.unwrap().id, project.id);
+        assert_eq!(retried.task.unwrap().id, task.id);
+
+        let conn = state.conn().unwrap();
+        let (project_count, task_count, audit_count, inbox_status): (i64, i64, i64, String) = conn
+            .query_row(
+                "SELECT
+                    (SELECT COUNT(*) FROM projects WHERE id = ?2),
+                    (SELECT COUNT(*) FROM tasks WHERE id = ?3),
+                    (SELECT COUNT(*) FROM autonomy_decisions
+                     WHERE action_type = 'CREATE_PROJECT_FROM_INBOX'),
+                    (SELECT status FROM inbox_items WHERE id = ?1)",
+                rusqlite::params![note.id, project.id, task.id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(project_count, 1);
+        assert_eq!(task_count, 1);
+        assert_eq!(audit_count, 1);
+        assert_eq!(inbox_status, "CONVERTED");
+
+        drop(conn);
+        drop(state);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn actionable_project_without_a_next_step_creates_no_task() {
+        let (directory, state) = test_state();
+        let note = inbox::capture(&state, "I want to organize a community meetup").unwrap();
+        add_project_proposal(&state, &note.id, None);
+
+        let applied = apply_proposal(&state, &note.id).unwrap();
+        assert!(applied.project.is_some());
+        assert!(applied.task.is_none());
+        assert!(crate::application::tasks::list_open(&state)
+            .unwrap()
+            .is_empty());
+
+        drop(state);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn project_and_first_task_roll_back_when_audit_insert_fails() {
+        let (directory, state) = test_state();
+        let note = inbox::capture(&state, "I want to launch a newsletter").unwrap();
+        add_project_proposal(&state, &note.id, Some("Draft the first issue"));
+        {
+            let conn = state.conn().unwrap();
+            conn.execute_batch(
+                "CREATE TRIGGER reject_test_project_audit
+                 BEFORE INSERT ON autonomy_decisions
+                 BEGIN
+                     SELECT RAISE(ABORT, 'test audit failure');
+                 END;",
+            )
+            .unwrap();
+        }
+
+        assert!(matches!(
+            apply_proposal(&state, &note.id),
+            Err(AgentError::Database(_))
+        ));
+        let conn = state.conn().unwrap();
+        let (project_count, task_count, proposal_status, inbox_status): (i64, i64, String, String) =
+            conn.query_row(
+                "SELECT
+                    (SELECT COUNT(*) FROM projects),
+                    (SELECT COUNT(*) FROM tasks),
+                    (SELECT status FROM classification_proposals WHERE inbox_item_id = ?1),
+                    (SELECT status FROM inbox_items WHERE id = ?1)",
+                [&note.id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(project_count, 0);
         assert_eq!(task_count, 0);
         assert_eq!(proposal_status, "PENDING");
         assert_eq!(inbox_status, "PROPOSED");

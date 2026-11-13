@@ -13,7 +13,7 @@ interface InboxStore {
   update: (id: string, rawText: string) => Promise<boolean>
   archive: (id: string) => Promise<boolean>
   analyze: (id: string) => Promise<boolean>
-  applyTaskProposal: (id: string) => Promise<boolean>
+  applyProposal: (id: string) => Promise<boolean>
 }
 
 export const useInboxStore = create<InboxStore>((set, get) => ({
@@ -120,11 +120,11 @@ export const useInboxStore = create<InboxStore>((set, get) => ({
     }
   },
 
-  applyTaskProposal: async (id) => {
+  applyProposal: async (id) => {
     if (!isTauri() || get().mutating) return false
     set({ mutating: true, error: null })
     try {
-      await bridge.inboxApplyTaskProposal(id)
+      await bridge.inboxApplyProposal(id)
       await get().load()
       set({ mutating: false })
       return true

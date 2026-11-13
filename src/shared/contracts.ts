@@ -32,6 +32,11 @@ export interface InboxItem {
   analysis: AiAnalysisResult | null
 }
 
+export interface AppliedInboxProposal {
+  project: Project | null
+  task: Task | null
+}
+
 export type AnalysisKind =
   | 'TASK'
   | 'IDEA'

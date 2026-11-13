@@ -40,9 +40,9 @@ pub async fn inbox_analyze(
 }
 
 #[tauri::command]
-pub fn inbox_apply_task_proposal(
+pub fn inbox_apply_proposal(
     state: State<'_, AppState>,
     id: String,
-) -> Result<crate::application::tasks::Task, String> {
-    agent::apply_task_proposal(&state, &id).map_err(|error| error.to_string())
+) -> Result<agent::AppliedInboxProposal, String> {
+    agent::apply_proposal(&state, &id).map_err(|error| error.to_string())
 }

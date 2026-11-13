@@ -13,18 +13,34 @@ pub struct AutonomyDecisionRecord<'a> {
     pub related_task_ids: &'a str,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConfirmedInboxAction {
+    CreateTask,
+    CreateProject,
+}
+
+impl ConfirmedInboxAction {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::CreateTask => "CREATE_TASK_FROM_INBOX",
+            Self::CreateProject => "CREATE_PROJECT_FROM_INBOX",
+        }
+    }
+}
+
 pub struct AutonomyRepo;
 
 impl AutonomyRepo {
-    pub fn insert_confirmed_task_from_inbox(
+    pub fn insert_confirmed_inbox_action(
         conn: &Connection,
+        action: ConfirmedInboxAction,
         decision: &AutonomyDecisionRecord<'_>,
     ) -> Result<(), DbError> {
         conn.execute(
             "INSERT INTO autonomy_decisions
                 (id, action_id, action_type, occurred_at, trigger, level, policy, status,
                  reason, proposed_payload, result_payload, related_task_ids, created_at, updated_at)
-             VALUES (?1, ?2, 'CREATE_TASK_FROM_INBOX', ?3, 'inbox_proposal_approved',
+             VALUES (?1, ?2, ?9, ?3, 'inbox_proposal_approved',
                      'REQUIRE_CONFIRMATION', ?4, 'CONFIRMED', ?5, ?6, ?7, ?8, ?3, ?3)",
             rusqlite::params![
                 decision.id,
@@ -35,6 +51,7 @@ impl AutonomyRepo {
                 decision.proposed_payload,
                 decision.result_payload,
                 decision.related_task_ids,
+                action.as_str(),
             ],
         )?;
         Ok(())

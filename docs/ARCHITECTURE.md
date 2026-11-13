@@ -531,6 +531,13 @@ below REQUIRE_CONFIRMATION.
    apply or reject → decision status flips; undo event recorded
 ```
 
+The current Inbox harness is a deliberately narrower first slice: it accepts
+only actionable NIM task and project proposals. Applying one requires explicit
+user confirmation; Rust validates the operation, writes the project and
+optional first task in one transaction, records the autonomy decision, and
+returns the prior result on retry. Other analysis kinds remain proposals and
+cannot cross the persistence boundary.
+
 ### 7.4 Undo
 
 Every applied operation stores a JSON `undo_payload` in `schedule_events`
@@ -964,8 +971,9 @@ incremental by design; no phase starts the next until its gates close.
 ### Phase 4 — AI intelligence
 - `NimProvider`/`MockProvider` + ChatRequest + SSE + retry/timeout + wiremock
   tests; ContextSelector (FTS5) + token budgets; Zod schemas + entity-ref
-  verification; bounded note-agent harness with idempotent, audited project
-  and task creation; orchestrators BrainDumpAnalyzer · TaskClassifier ·
+  verification; bounded note-agent harness with idempotent, audited, confirmed
+  project and task creation (initial Inbox slice implemented); orchestrators
+  BrainDumpAnalyzer · TaskClassifier ·
   ProjectAnalyzer · GoalPlanner · DailyPlanner · ScheduleOptimizer ·
   ScheduleChangeExplainer; ai_planning_history; degradation paths.
 - **Exit:** classify→propose→apply works against **mock** provider in CI;

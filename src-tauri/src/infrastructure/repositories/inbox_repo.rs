@@ -214,7 +214,7 @@ impl InboxRepo {
         Ok(changed == 1)
     }
 
-    pub fn applied_task_action(
+    pub fn applied_proposal_action(
         conn: &Connection,
         inbox_item_id: &str,
     ) -> Result<Option<String>, DbError> {
@@ -225,7 +225,7 @@ impl InboxRepo {
                  JOIN autonomy_decisions ad ON ad.action_id = cp.id
                  JOIN inbox_items ii ON ii.id = cp.inbox_item_id
                  WHERE cp.inbox_item_id = ?1 AND cp.status = 'APPROVED'
-                   AND ad.action_type = 'CREATE_TASK_FROM_INBOX'
+                   AND ad.action_type IN ('CREATE_TASK_FROM_INBOX', 'CREATE_PROJECT_FROM_INBOX')
                    AND ii.status = 'CONVERTED' AND ii.archived = 0
                  ORDER BY cp.decided_at DESC, cp.id DESC LIMIT 1",
                 [inbox_item_id],

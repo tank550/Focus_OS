@@ -1,4 +1,4 @@
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 
 use crate::infrastructure::db::DbError;
 
@@ -17,6 +17,29 @@ pub struct ProjectRecord {
 pub struct ProjectsRepo;
 
 impl ProjectsRepo {
+    pub fn get(conn: &Connection, id: &str) -> Result<Option<ProjectRecord>, DbError> {
+        Ok(conn
+            .query_row(
+                "SELECT id, name, description, status, priority, progress, created_at, updated_at
+                 FROM projects
+                 WHERE id = ?1 AND archived = 0 AND status != 'ARCHIVED'",
+                [id],
+                |row| {
+                    Ok(ProjectRecord {
+                        id: row.get(0)?,
+                        name: row.get(1)?,
+                        description: row.get(2)?,
+                        status: row.get(3)?,
+                        priority: row.get(4)?,
+                        progress: row.get(5)?,
+                        created_at: row.get(6)?,
+                        updated_at: row.get(7)?,
+                    })
+                },
+            )
+            .optional()?)
+    }
+
     pub fn insert(conn: &Connection, project: &ProjectRecord) -> Result<(), DbError> {
         conn.execute(
             "INSERT INTO projects

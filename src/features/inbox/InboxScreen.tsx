@@ -24,7 +24,7 @@ export function InboxScreen() {
     update,
     archive,
     analyze,
-    applyTaskProposal,
+    applyProposal,
   } = useInboxStore()
 
   useEffect(() => {
@@ -46,8 +46,8 @@ export function InboxScreen() {
     if (await archive(id)) setPendingDeleteId(null)
   }
 
-  const handleApplyTaskProposal = async (id: string) => {
-    await applyTaskProposal(id)
+  const handleApplyProposal = async (id: string) => {
+    await applyProposal(id)
   }
 
   return (
@@ -243,7 +243,7 @@ export function InboxScreen() {
                           )}
                           {item.status === 'CONVERTED' ? (
                             <p className="mt-2 text-xs text-success">
-                              Task created and recorded in the audit trail.
+                              The proposal was applied and recorded in the audit trail.
                             </p>
                           ) : item.analysis.provider === 'nim' &&
                             item.analysis.analysis.kind === 'TASK' &&
@@ -255,16 +255,39 @@ export function InboxScreen() {
                                 className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90 disabled:opacity-40"
                                 disabled={!inTauri || mutating}
                                 onClick={() =>
-                                  void handleApplyTaskProposal(item.id)
+                                  void handleApplyProposal(item.id)
                                 }
                               >
                                 {mutating
-                                  ? 'Creating task…'
+                                  ? 'Applying proposal…'
                                   : 'Confirm and create task'}
                               </button>
                               <p className="text-xs text-text-muted">
                                 Your confirmation is required. The note stays
                                 unchanged; the task is linked to it for audit.
+                              </p>
+                            </div>
+                          ) : item.analysis.provider === 'nim' &&
+                            item.analysis.analysis.kind === 'PROJECT' &&
+                            item.analysis.analysis.actionability ===
+                              'ACTIONABLE' &&
+                            item.analysis.analysis.project_guess?.trim() ? (
+                            <div className="mt-3 flex flex-wrap items-center gap-3">
+                              <button
+                                className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90 disabled:opacity-40"
+                                disabled={!inTauri || mutating}
+                                onClick={() =>
+                                  void handleApplyProposal(item.id)
+                                }
+                              >
+                                {mutating
+                                  ? 'Applying proposal…'
+                                  : 'Confirm and create project'}
+                              </button>
+                              <p className="text-xs text-text-muted">
+                                Your confirmation is required. If the analysis
+                                suggests a next step, it will be added as the
+                                project’s first task.
                               </p>
                             </div>
                           ) : (

@@ -51,7 +51,7 @@ pub fn run() {
             commands::github_token_store,
             commands::inbox_archive,
             commands::inbox_analyze,
-            commands::inbox_apply_task_proposal,
+            commands::inbox_apply_proposal,
             commands::inbox_capture,
             commands::inbox_list,
             commands::inbox_update,
