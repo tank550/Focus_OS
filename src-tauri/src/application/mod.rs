@@ -4,6 +4,7 @@
 pub mod agent;
 pub mod goals;
 pub mod inbox;
+pub mod planner;
 pub mod portfolio;
 pub mod projects;
 pub mod settings;

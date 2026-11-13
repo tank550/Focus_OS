@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { bridge, isTauri } from '../lib/tauri'
-import type { AiSettings, Settings } from '../shared/contracts'
+import type { AiSettings, ScheduleSettings, Settings } from '../shared/contracts'
 
 /** Mirrors the Rust defaults in `application::settings::Settings::default()`. */
 export const DEFAULT_SETTINGS: Settings = {
@@ -37,6 +37,7 @@ interface SettingsStore {
   error: string | null
   load: () => Promise<void>
   saveAi: (ai: AiSettings) => Promise<void>
+  saveSchedule: (schedule: ScheduleSettings) => Promise<void>
   storeAiApiKey: (apiKey: string) => Promise<void>
   removeAiApiKey: () => Promise<void>
 }
@@ -80,6 +81,14 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
     await bridge.settingsSet('ai', JSON.stringify(ai))
     set((state) => ({
       settings: { ...state.settings, ai },
+      error: null,
+    }))
+  },
+
+  saveSchedule: async (schedule) => {
+    await bridge.settingsSet('schedule', JSON.stringify(schedule))
+    set((state) => ({
+      settings: { ...state.settings, schedule },
       error: null,
     }))
   },

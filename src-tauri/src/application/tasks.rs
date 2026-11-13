@@ -217,6 +217,7 @@ pub fn start_focus(state: &AppState, task_id: &str) -> Result<FocusSession, Task
     if !TasksRepo::set_status(&tx, task_id, "IN_PROGRESS", now, None)? {
         return Err(TasksError::NotFound);
     }
+    TasksRepo::set_active_queue_status(&tx, task_id, "STARTED", None)?;
     tx.commit().map_err(DbError::from)?;
     Ok(FocusSession {
         id: session_id,
@@ -253,6 +254,8 @@ pub fn complete(state: &AppState, task_id: &str) -> Result<(), TasksError> {
         Some(now),
     )? {
         return Err(TasksError::NotFound);
+    } else {
+        TasksRepo::set_active_queue_status(&tx, task_id, "COMPLETED", Some(now))?;
     }
 
     tx.commit().map_err(DbError::from)?;
@@ -297,6 +300,12 @@ fn finish_session_in_transaction(
     )? {
         return Err(TasksError::NotFocusing);
     }
+    let queue_status = if next_status == TaskStatus::Completed {
+        "COMPLETED"
+    } else {
+        "QUEUED"
+    };
+    TasksRepo::set_active_queue_status(tx, task.id.as_str(), queue_status, completed_at)?;
 
     if let Some(goal_id) = &task.goal_id {
         let entry = SidecarEntryRecord {

@@ -4,9 +4,11 @@ AI-powered adaptive personal operating system — local-first, hybrid scheduling
 adaptive autonomy. Turns scattered thoughts and ambitions into consistent,
 realistic daily execution.
 
-> **Status:** Phase 2 (Core domain) — in progress. Inbox, project management,
-> a visible goal Sidecar, and basic task focus sessions are implemented.
-> Automatic AI organization, scheduling, and system activity observation remain.
+> **Status:** Phases 2–3 — in progress. Inbox, project management, a visible
+> goal Sidecar, and focus sessions are implemented. The first local daily
+> priority queue now respects working capacity, reserve, and task dependencies;
+> time-block scheduling, automatic AI organization, and activity observation
+> remain.
 > Architecture contract: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
 ## Stack
@@ -71,3 +73,8 @@ repositories owned by the account, and inspect a selected repository locally.
 After a separate confirmation, the app sends only the displayed derived
 summary to NVIDIA NIM for a portfolio assessment and editable CV draft. The
 assessment and draft are stored locally; raw GitHub source is never sent.
+
+Today can create a versioned local priority queue from open tasks. The queue
+respects the configured working-day limits and reserve, and reports overflow
+and unresolved dependencies without modifying task status. It does not yet
+assign clock-time blocks.

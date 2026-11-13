@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 import type {
   AppInfo,
   AiAnalysisResult,
+  DailyPlan,
   Health,
   Goal,
   GoalSidecarEntry,
@@ -90,4 +91,8 @@ export const bridge = {
     invoke('portfolio_analyze_repository', { fullName, confirmedSummary }),
   portfolioSaveDraft: (id: string, draftMarkdown: string): Promise<void> =>
     invoke('portfolio_save_draft', { id, draftMarkdown }),
+  plannerToday: (planDate: string): Promise<DailyPlan | null> =>
+    invoke('planner_today', { planDate }),
+  plannerPlanDay: (planDate: string): Promise<DailyPlan> =>
+    invoke('planner_plan_day', { planDate }),
 } as const

@@ -61,6 +61,8 @@ pub fn run() {
             commands::portfolio_assessments_list,
             commands::portfolio_analyze_repository,
             commands::portfolio_save_draft,
+            commands::planner_plan_day,
+            commands::planner_today,
             commands::settings_get,
             commands::settings_set,
             commands::settings_all,

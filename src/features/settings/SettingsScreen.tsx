@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { Card } from '../../components/ui/Card'
-import { minutesToLabel } from '../../lib/date'
 import { bridge } from '../../lib/tauri'
 import { useAppStore } from '../../stores/appStore'
 import { useSettingsStore } from '../../stores/settingsStore'
@@ -9,6 +8,7 @@ import type {
   GithubRepository,
   GithubSourceSummary,
   PortfolioReport,
+  ScheduleSettings,
 } from '../../shared/contracts'
 
 const inputClass =
@@ -20,12 +20,18 @@ export function SettingsScreen() {
     settings,
     error: settingsError,
     saveAi,
+    saveSchedule,
     storeAiApiKey,
     removeAiApiKey,
   } = useSettingsStore()
   const [aiConfig, setAiConfig] = useState<AiSettings>(settings.ai)
   const [apiKey, setApiKey] = useState('')
   const [savingAi, setSavingAi] = useState(false)
+  const [scheduleConfig, setScheduleConfig] = useState<ScheduleSettings>(
+    settings.schedule,
+  )
+  const [savingSchedule, setSavingSchedule] = useState(false)
+  const [scheduleMessage, setScheduleMessage] = useState<string | null>(null)
   const [aiMessage, setAiMessage] = useState<string | null>(null)
   const [githubToken, setGithubToken] = useState('')
   const [githubConnected, setGithubConnected] = useState(false)
@@ -53,6 +59,10 @@ export function SettingsScreen() {
   useEffect(() => {
     setAiConfig(settings.ai)
   }, [settings.ai])
+
+  useEffect(() => {
+    setScheduleConfig(settings.schedule)
+  }, [settings.schedule])
 
   useEffect(() => {
     if (!inTauri) return
@@ -139,6 +149,21 @@ export function SettingsScreen() {
       setAiMessage(String(reason))
     } finally {
       setSavingAi(false)
+    }
+  }
+
+  const saveScheduleConfiguration = async () => {
+    setSavingSchedule(true)
+    setScheduleMessage(null)
+    try {
+      await saveSchedule(scheduleConfig)
+      setScheduleMessage('Schedule settings saved.')
+    } catch (reason) {
+      setScheduleMessage(
+        reason instanceof Error ? reason.message : String(reason),
+      )
+    } finally {
+      setSavingSchedule(false)
     }
   }
 
@@ -656,15 +681,112 @@ export function SettingsScreen() {
         </Card>
 
         <Card title="Schedule">
-          <p className="text-sm">
-            Working hours {settings.schedule.workingHoursStart}–
-            {settings.schedule.workingHoursEnd} · daily cap{' '}
-            {minutesToLabel(settings.schedule.maxDailyMinutes)} · reserve{' '}
-            {Math.round(settings.schedule.reserveRatio * 100)}%
-          </p>
-          <p className="mt-2 text-xs leading-relaxed text-text-muted">
-            Workload guardrails feed the deterministic scheduler (Phase 3).
-          </p>
+          <div className="flex flex-col gap-4">
+            <p className="text-xs leading-relaxed text-text-muted">
+              These limits are used by the local daily planner. At least 30
+              minutes or the configured reserve (whichever is larger) stays
+              unplanned.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1.5 text-xs text-text-muted">
+                Working day starts
+                <input
+                  className={inputClass}
+                  type="time"
+                  value={scheduleConfig.workingHoursStart}
+                  onChange={(event) =>
+                    setScheduleConfig({
+                      ...scheduleConfig,
+                      workingHoursStart: event.target.value,
+                    })
+                  }
+                  disabled={!inTauri || savingSchedule}
+                />
+              </label>
+              <label className="flex flex-col gap-1.5 text-xs text-text-muted">
+                Working day ends
+                <input
+                  className={inputClass}
+                  type="time"
+                  value={scheduleConfig.workingHoursEnd}
+                  onChange={(event) =>
+                    setScheduleConfig({
+                      ...scheduleConfig,
+                      workingHoursEnd: event.target.value,
+                    })
+                  }
+                  disabled={!inTauri || savingSchedule}
+                />
+              </label>
+              <label className="flex flex-col gap-1.5 text-xs text-text-muted">
+                Daily work limit (minutes)
+                <input
+                  className={inputClass}
+                  type="number"
+                  min={1}
+                  max={1440}
+                  step={1}
+                  value={scheduleConfig.maxDailyMinutes}
+                  onChange={(event) =>
+                    setScheduleConfig({
+                      ...scheduleConfig,
+                      maxDailyMinutes: Number(event.target.value),
+                    })
+                  }
+                  disabled={!inTauri || savingSchedule}
+                />
+              </label>
+              <label className="flex flex-col gap-1.5 text-xs text-text-muted">
+                Protected reserve (%)
+                <input
+                  className={inputClass}
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={Math.round(scheduleConfig.reserveRatio * 100)}
+                  onChange={(event) =>
+                    setScheduleConfig({
+                      ...scheduleConfig,
+                      reserveRatio: Number(event.target.value) / 100,
+                    })
+                  }
+                  disabled={!inTauri || savingSchedule}
+                />
+              </label>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                className="rounded-md border border-border px-3 py-1.5 text-xs text-text-muted hover:text-text disabled:opacity-40"
+                onClick={() => void saveScheduleConfiguration()}
+                disabled={
+                  !inTauri ||
+                  savingSchedule ||
+                  !/^([01]\d|2[0-3]):[0-5]\d$/.test(
+                    scheduleConfig.workingHoursStart,
+                  ) ||
+                  !/^([01]\d|2[0-3]):[0-5]\d$/.test(
+                    scheduleConfig.workingHoursEnd,
+                  ) ||
+                  !Number.isInteger(scheduleConfig.maxDailyMinutes) ||
+                  scheduleConfig.maxDailyMinutes < 1 ||
+                  scheduleConfig.maxDailyMinutes > 1440 ||
+                  !Number.isFinite(scheduleConfig.reserveRatio) ||
+                  scheduleConfig.reserveRatio < 0 ||
+                  scheduleConfig.reserveRatio > 1 ||
+                  scheduleConfig.workingHoursEnd <= scheduleConfig.workingHoursStart
+                }
+              >
+                {savingSchedule ? 'Saving…' : 'Save schedule'}
+              </button>
+              {scheduleMessage && (
+                <p className="text-xs text-text-muted" role="status">
+                  {scheduleMessage}
+                </p>
+              )}
+            </div>
+          </div>
         </Card>
 
         <Card title="Application">

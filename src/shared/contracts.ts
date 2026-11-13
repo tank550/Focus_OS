@@ -194,6 +194,30 @@ export interface Task {
   updatedAt: number
 }
 
+export interface PlannedTask {
+  taskId: string
+  title: string
+  description: string | null
+  priority: number
+  estimatedMinutes: number
+  score: number
+  deadline: number | null
+  fitsCapacity: boolean
+}
+
+export interface DailyPlan {
+  id: string
+  planDate: string
+  version: number
+  capacityMinutes: number
+  plannedWorkMinutes: number
+  overflowMinutes: number
+  workloadReserveMinutes: number
+  tasks: PlannedTask[]
+  blockedTasks: PlannedTask[]
+  createdAt: number
+}
+
 export interface FocusSession {
   id: string
   taskId: string

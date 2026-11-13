@@ -213,6 +213,25 @@ impl TasksRepo {
         Ok(changed == 1)
     }
 
+    pub fn set_active_queue_status(
+        conn: &Connection,
+        task_id: &str,
+        status: &str,
+        completed_at: Option<i64>,
+    ) -> Result<(), DbError> {
+        conn.execute(
+            "UPDATE flexible_queue_items
+             SET status = ?2, completed_at = ?3
+             WHERE task_id = ?1
+               AND daily_plan_id IN (
+                   SELECT id FROM daily_plans WHERE status = 'ACTIVE'
+               )
+               AND status IN ('QUEUED','SELECTED','STARTED')",
+            rusqlite::params![task_id, status, completed_at],
+        )?;
+        Ok(())
+    }
+
     pub fn finish_session(
         conn: &Connection,
         session_id: &str,
