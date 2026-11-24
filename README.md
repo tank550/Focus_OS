@@ -8,9 +8,10 @@ realistic daily execution.
 > goal Sidecar, focus sessions, and a first local activity analytics view are
 > implemented. The local daily planner
 > prioritizes work, places deep-work tasks into time blocks, preserves a
-> workload reserve, and reports overflow and unresolved dependencies. Flexible
-> queue optimization, automatic AI organization, and activity observation
-> remain.
+> workload reserve, and reports overflow and unresolved dependencies. A
+> deterministic autonomy rule table (R01–R24) with settings overrides now backs
+> the audit trail. Flexible queue optimization, the approval/undo workflow,
+> automatic AI organization, and activity observation remain.
 > Architecture contract: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
 ## Stack

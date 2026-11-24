@@ -5,6 +5,7 @@
 mod ai;
 mod analytics;
 mod app;
+mod autonomy;
 mod github;
 mod goals;
 mod health;
@@ -18,6 +19,7 @@ mod tasks;
 pub use ai::*;
 pub use analytics::*;
 pub use app::*;
+pub use autonomy::*;
 pub use github::*;
 pub use goals::*;
 pub use health::*;

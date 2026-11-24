@@ -3,6 +3,7 @@
 
 pub mod agent;
 pub mod analytics;
+pub mod autonomy;
 pub mod goals;
 pub mod inbox;
 pub mod planner;

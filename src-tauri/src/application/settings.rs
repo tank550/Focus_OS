@@ -9,6 +9,7 @@ use crate::state::AppState;
 pub const KEY_AI: &str = "ai";
 pub const KEY_SCHEDULE: &str = "schedule";
 pub const KEY_APPEARANCE: &str = "appearance";
+pub const KEY_AUTONOMY: &str = "autonomy";
 
 /// Typed views over the JSON-blob settings. Values mirror
 /// `src/shared/contracts.ts`; keep them byte-identical.

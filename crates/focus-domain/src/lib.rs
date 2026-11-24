@@ -5,6 +5,7 @@
 //! headlessly (`cargo test -p focus-domain`) and cannot accidentally acquire
 //! write access to the persistence layer.
 
+pub mod autonomy;
 pub mod errors;
 pub mod ids;
 pub mod status;

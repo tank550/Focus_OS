@@ -5,6 +5,8 @@ import { useAppStore } from '../../stores/appStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import type {
   AiSettings,
+  AutonomyLevel,
+  AutonomyRule,
   GithubRepository,
   GithubSourceSummary,
   PortfolioReport,
@@ -13,6 +15,18 @@ import type {
 
 const inputClass =
   'w-full rounded-md border border-border bg-surface-2 px-3 py-2 text-sm outline-none focus:border-accent'
+
+const AUTONOMY_LEVEL_STYLES: Record<AutonomyLevel, string> = {
+  AUTO_EXECUTE: 'border-success/30 bg-success/10 text-success',
+  PROPOSE: 'border-warning/30 bg-warning/10 text-warning',
+  REQUIRE_CONFIRMATION: 'border-danger/30 bg-danger/10 text-danger',
+}
+
+const AUTONOMY_LEVEL_LABELS: Record<AutonomyLevel, string> = {
+  AUTO_EXECUTE: 'Auto',
+  PROPOSE: 'Propose',
+  REQUIRE_CONFIRMATION: 'Confirm',
+}
 
 export function SettingsScreen() {
   const { appInfo, health, inTauri } = useAppStore()
@@ -51,6 +65,8 @@ export function SettingsScreen() {
   const [portfolioBusy, setPortfolioBusy] = useState(false)
   const [portfolioMessage, setPortfolioMessage] = useState<string | null>(null)
   const [portfolioError, setPortfolioError] = useState<string | null>(null)
+  const [autonomyRules, setAutonomyRules] = useState<AutonomyRule[]>([])
+  const [autonomyError, setAutonomyError] = useState<string | null>(null)
 
   const selectedPortfolio = portfolioReports.find(
     (report) => report.id === selectedPortfolioId,
@@ -99,6 +115,27 @@ export function SettingsScreen() {
       .catch((reason) => {
         if (active)
           setPortfolioError(
+            reason instanceof Error ? reason.message : String(reason),
+          )
+      })
+    return () => {
+      active = false
+    }
+  }, [inTauri])
+
+  useEffect(() => {
+    if (!inTauri) return
+    let active = true
+    void bridge
+      .autonomyPolicy()
+      .then((rules) => {
+        if (!active) return
+        setAutonomyRules(rules)
+        setAutonomyError(null)
+      })
+      .catch((reason) => {
+        if (active)
+          setAutonomyError(
             reason instanceof Error ? reason.message : String(reason),
           )
       })
@@ -786,6 +823,49 @@ export function SettingsScreen() {
                 </p>
               )}
             </div>
+          </div>
+        </Card>
+
+        <Card title="Autonomy policy">
+          <div className="flex flex-col gap-4">
+            <p className="text-xs leading-relaxed text-text-muted">
+              The deterministic rule table decides whether a proposed change
+              runs automatically, is proposed for review, or needs explicit
+              confirmation. Strategic rules (R20–R24) can never be loosened
+              below confirmation.
+            </p>
+            {autonomyError && (
+              <p role="alert" className="text-xs text-danger">
+                {autonomyError}
+              </p>
+            )}
+            <ul className="flex flex-col divide-y divide-border">
+              {autonomyRules.map((rule, index) => (
+                <li
+                  key={`${rule.id}-${rule.actionType}-${index}`}
+                  className="flex flex-wrap items-start justify-between gap-2 py-2 first:pt-0 last:pb-0"
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium">
+                      <span className="font-mono text-text-muted">
+                        {rule.id}
+                      </span>{' '}
+                      <span className="font-mono text-[11px] text-text-muted">
+                        {rule.actionType}
+                      </span>
+                    </p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-text-muted">
+                      {rule.reason}
+                    </p>
+                  </div>
+                  <span
+                    className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium ${AUTONOMY_LEVEL_STYLES[rule.level]}`}
+                  >
+                    {AUTONOMY_LEVEL_LABELS[rule.level]}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
         </Card>
 

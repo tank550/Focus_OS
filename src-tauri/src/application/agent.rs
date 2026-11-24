@@ -1,8 +1,11 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use focus_domain::autonomy::{ActionContext, ActionType};
 use focus_domain::ids::EntityId;
 use focus_domain::value_objects::UtcMillis;
+
+use crate::application::autonomy;
 
 use crate::application::inbox::InboxError;
 use crate::application::projects::{self, AgentProjectDraft, Project, ProjectsError};
@@ -62,6 +65,8 @@ pub enum AgentError {
     Task(#[from] TasksError),
     #[error(transparent)]
     Project(#[from] ProjectsError),
+    #[error(transparent)]
+    Autonomy(#[from] autonomy::AutonomyError),
     #[error(transparent)]
     Database(#[from] DbError),
 }
@@ -258,6 +263,9 @@ pub fn apply_proposal(
     state: &AppState,
     inbox_item_id: &str,
 ) -> Result<AppliedInboxProposal, AgentError> {
+    // Classify the action before opening the write transaction; the policy is
+    // pure and reads only settings.
+    let autonomy_policy = autonomy::policy(state)?;
     let mut conn = state.conn()?;
     let tx = conn
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
@@ -298,6 +306,18 @@ pub fn apply_proposal(
         inbox_item_id,
     )?;
     let action_type = operation.action_type();
+    let autonomy_action = match action_type {
+        ConfirmedInboxAction::CreateTask => ActionType::CreateTaskFromNote,
+        ConfirmedInboxAction::CreateProject => ActionType::CreateProjectFromNote,
+    };
+    let classification = autonomy_policy.classify(
+        autonomy_action,
+        &ActionContext {
+            additive: true,
+            within_reserve: true,
+            ..ActionContext::default()
+        },
+    );
     let (project, task) = match operation {
         ProposedOperation::CreateTask(draft) => (
             None,
@@ -326,6 +346,12 @@ pub fn apply_proposal(
         "decision": "explicit_user_confirmation",
         "harness": "validated_closed_operation_v1",
         "scope": action_type.as_str(),
+        "classification": {
+            "level": classification.level.as_str(),
+            "ruleId": classification.rule_id,
+            "reason": classification.reason,
+        },
+        "enforcedLevel": "REQUIRE_CONFIRMATION",
     })
     .to_string();
     let result_payload = serde_json::to_string(&AppliedProposalPayload {

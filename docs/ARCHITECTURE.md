@@ -3,7 +3,8 @@
 > **Version:** 1.0 (draft for approval) · **Date:** 2026-11-10
 > **Status:** Incremental implementation in progress; note-driven agent behavior
 > and goal Sidecar observability are recorded in [ADR 0001](ADRs/0001-note-driven-agent.md)
-> and [ADR 0002](ADRs/0002-goal-sidecar-observability.md).
+> and [ADR 0002](ADRs/0002-goal-sidecar-observability.md); the read-only GitHub
+> portfolio connector is recorded in [ADR 0003](ADRs/0003-read-only-github-portfolio.md).
 > **Companion artifact:** `docs/SQLITE_SCHEMA.sql` (complete initial DDL).
 
 ---
@@ -536,7 +537,11 @@ only actionable NIM task and project proposals. Applying one requires explicit
 user confirmation; Rust validates the operation, writes the project and
 optional first task in one transaction, records the autonomy decision, and
 returns the prior result on retry. Other analysis kinds remain proposals and
-cannot cross the persistence boundary.
+cannot cross the persistence boundary. The deterministic rule table (R01–R24)
+and its settings overrides are implemented in `focus-domain::autonomy`; the
+Inbox audit snapshot records the matched classification next to the enforced
+level. The approval queue, undo service, and adaptive scenario integration
+remain on the roadmap.
 
 ### 7.4 Undo
 

@@ -4,6 +4,7 @@ import type {
   AppliedInboxProposal,
   AiAnalysisResult,
   AnalyticsSummary,
+  AutonomyRule,
   DailyPlan,
   Health,
   Goal,
@@ -28,6 +29,7 @@ export const isTauri = (): boolean => '__TAURI_INTERNALS__' in window
 export const bridge = {
   appInfo: (): Promise<AppInfo> => invoke('app_info'),
   analyticsSummary: (): Promise<AnalyticsSummary> => invoke('analytics_summary'),
+  autonomyPolicy: (): Promise<AutonomyRule[]> => invoke('autonomy_policy'),
   health: (): Promise<Health> => invoke('health'),
   inboxList: (): Promise<InboxItem[]> => invoke('inbox_list'),
   inboxCapture: (rawText: string): Promise<InboxItem> =>

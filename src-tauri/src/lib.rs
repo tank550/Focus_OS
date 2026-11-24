@@ -37,6 +37,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
             commands::analytics_summary,
+            commands::autonomy_policy,
             commands::ai_api_key_status,
             commands::ai_api_key_store,
             commands::ai_api_key_remove,

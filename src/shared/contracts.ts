@@ -291,3 +291,48 @@ export interface Settings {
   schedule: ScheduleSettings
   appearance: AppearanceSettings
 }
+
+export type AutonomyLevel =
+  | 'AUTO_EXECUTE'
+  | 'PROPOSE'
+  | 'REQUIRE_CONFIRMATION'
+
+export type AutonomyActionType =
+  | 'MARK_TASK_COMPLETED'
+  | 'REORDER_FLEXIBLE_QUEUE'
+  | 'INSERT_FLEXIBLE_TASK'
+  | 'ADJUST_ESTIMATE'
+  | 'RECALC_REMAINING_CAPACITY'
+  | 'MOVE_DEEP_WORK_BLOCK'
+  | 'RESCHEDULE_PROJECT_TASK'
+  | 'INSERT_TASK_DISPLACING_PRIORITY'
+  | 'SUBSTANTIAL_DAY_REPLAN'
+  | 'CREATE_TASK_FROM_NOTE'
+  | 'CREATE_PROJECT_FROM_NOTE'
+  | 'ORGANIZE_AMBIGUOUS_NOTE'
+  | 'CHANGE_GOAL'
+  | 'CHANGE_MILESTONE'
+  | 'DELETE_TASK'
+  | 'DELETE_PROJECT'
+  | 'ABANDON_PROJECT'
+  | 'CHANGE_MANDATORY_DEADLINE'
+  | 'MOVE_FIXED_COMMITMENT'
+  | 'CHANGE_QUARTERLY_OBJECTIVE'
+
+export interface AutonomyPredicates {
+  maxScheduleDeltaMinutes: number | null
+  additive: boolean | null
+  ambiguous: boolean | null
+  touchesStrategic: boolean | null
+  touchesFixed: boolean | null
+  displacesActive: boolean | null
+  withinReserve: boolean | null
+}
+
+export interface AutonomyRule {
+  id: string
+  actionType: AutonomyActionType
+  level: AutonomyLevel
+  predicates: AutonomyPredicates
+  reason: string
+}
