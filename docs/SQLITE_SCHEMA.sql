@@ -10,6 +10,7 @@
 --   * JSON payloads and explicit user-authored text fields are the sanctioned
 --     free-form columns; everything else is normalized and strictly typed.
 --   * v0002 adds the goal Sidecar as a separate observation stream.
+--   * v0003 adds locally stored GitHub portfolio assessments.
 -- =====================================================================
 
 -- Settings: key/value JSON store (avoids migration churn for preferences).
