@@ -261,7 +261,13 @@ mod tests {
     #[test]
     fn sql_contract_task_status() {
         for v in [
-            "INBOX", "TODO", "SCHEDULED", "IN_PROGRESS", "PAUSED", "COMPLETED", "CANCELLED",
+            "INBOX",
+            "TODO",
+            "SCHEDULED",
+            "IN_PROGRESS",
+            "PAUSED",
+            "COMPLETED",
+            "CANCELLED",
         ] {
             let _: TaskStatus = v.parse().expect("sql literal must parse");
         }
@@ -271,13 +277,23 @@ mod tests {
     #[test]
     fn sql_contract_block_type_and_status() {
         for v in [
-            "DEEP_WORK", "FOCUS_SESSION", "MEETING", "FIXED_COMMITMENT",
-            "BREAK", "BUFFER", "UNAVAILABLE",
+            "DEEP_WORK",
+            "FOCUS_SESSION",
+            "MEETING",
+            "FIXED_COMMITMENT",
+            "BREAK",
+            "BUFFER",
+            "UNAVAILABLE",
         ] {
             let _: BlockType = v.parse().expect("sql literal must parse");
         }
         for v in [
-            "PLANNED", "ACTIVE", "COMPLETED", "SKIPPED", "RESCHEDULED", "CANCELLED",
+            "PLANNED",
+            "ACTIVE",
+            "COMPLETED",
+            "SKIPPED",
+            "RESCHEDULED",
+            "CANCELLED",
         ] {
             let _: BlockStatus = v.parse().expect("sql literal must parse");
         }
@@ -287,7 +303,14 @@ mod tests {
 
     #[test]
     fn sql_contract_queue_status() {
-        for v in ["QUEUED", "SELECTED", "STARTED", "COMPLETED", "DEFERRED", "REMOVED"] {
+        for v in [
+            "QUEUED",
+            "SELECTED",
+            "STARTED",
+            "COMPLETED",
+            "DEFERRED",
+            "REMOVED",
+        ] {
             let _: QueueItemStatus = v.parse().expect("sql literal must parse");
         }
         assert_roundtrip(QueueItemStatus::Deferred, "DEFERRED");
@@ -296,13 +319,27 @@ mod tests {
     #[test]
     fn sql_contract_inbox_kind_and_status() {
         for v in [
-            "UNKNOWN", "TASK", "IDEA", "PROJECT", "RESPONSIBILITY", "OBLIGATION",
-            "RESEARCH", "EXPERIMENT", "AMBITION", "NOTE",
+            "UNKNOWN",
+            "TASK",
+            "IDEA",
+            "PROJECT",
+            "RESPONSIBILITY",
+            "OBLIGATION",
+            "RESEARCH",
+            "EXPERIMENT",
+            "AMBITION",
+            "NOTE",
         ] {
             let _: InboxKind = v.parse().expect("sql literal must parse");
         }
         for v in [
-            "RAW", "CLASSIFYING", "CLASSIFIED", "PROPOSED", "CONVERTED", "DISMISSED", "ARCHIVED",
+            "RAW",
+            "CLASSIFYING",
+            "CLASSIFIED",
+            "PROPOSED",
+            "CONVERTED",
+            "DISMISSED",
+            "ARCHIVED",
         ] {
             let _: InboxStatus = v.parse().expect("sql literal must parse");
         }
@@ -316,7 +353,12 @@ mod tests {
             let _: AutonomyLevel = v.parse().expect("sql literal must parse");
         }
         for v in [
-            "EXECUTED", "PROPOSED", "APPROVED", "REJECTED", "CONFIRMED", "WITHDRAWN",
+            "EXECUTED",
+            "PROPOSED",
+            "APPROVED",
+            "REJECTED",
+            "CONFIRMED",
+            "WITHDRAWN",
         ] {
             let _: AutonomyDecisionStatus = v.parse().expect("sql literal must parse");
         }
@@ -329,8 +371,14 @@ mod tests {
             let _: SessionType = v.parse().expect("sql literal must parse");
         }
         for v in [
-            "REMINDER_30M", "REMINDER_START", "OVERDUE", "DAILY_PLANNING",
-            "DAILY_REVIEW", "SCHEDULE_CHANGE", "FOCUS", "SYSTEM",
+            "REMINDER_30M",
+            "REMINDER_START",
+            "OVERDUE",
+            "DAILY_PLANNING",
+            "DAILY_REVIEW",
+            "SCHEDULE_CHANGE",
+            "FOCUS",
+            "SYSTEM",
         ] {
             let _: NotificationKind = v.parse().expect("sql literal must parse");
         }

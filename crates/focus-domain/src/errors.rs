@@ -11,10 +11,7 @@ pub enum DomainError {
     },
 
     #[error("invalid value for `{field}`: {reason}")]
-    InvalidValue {
-        field: &'static str,
-        reason: String,
-    },
+    InvalidValue { field: &'static str, reason: String },
 
     #[error("entity not found: {entity}:{id}")]
     NotFound { entity: &'static str, id: String },
