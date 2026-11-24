@@ -16,6 +16,7 @@ import type {
   Project,
   ProjectInput,
   PortfolioReport,
+  NextActionSuggestion,
   Task,
 } from '../shared/contracts'
 
@@ -100,4 +101,9 @@ export const bridge = {
     invoke('planner_today', { planDate }),
   plannerPlanDay: (planDate: string, utcOffsetMinutes: number): Promise<DailyPlan> =>
     invoke('planner_plan_day', { planDate, utcOffsetMinutes }),
+  plannerNextAction: (
+    planDate: string,
+    utcOffsetMinutes: number,
+  ): Promise<NextActionSuggestion> =>
+    invoke('planner_next_action', { planDate, utcOffsetMinutes }),
 } as const

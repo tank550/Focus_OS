@@ -4,7 +4,7 @@ import { Card } from '../../components/ui/Card'
 import { EmptyState } from '../../components/ui/EmptyState'
 import { localDateKey, minutesToLabel } from '../../lib/date'
 import { bridge } from '../../lib/tauri'
-import type { DailyPlan, FocusSession, PlannedTask, Task } from '../../shared/contracts'
+import type { DailyPlan, FocusSession, NextActionSuggestion, PlannedTask, Task } from '../../shared/contracts'
 
 function formatDuration(totalSeconds: number) {
   const hours = Math.floor(totalSeconds / 3600)
@@ -18,6 +18,7 @@ function formatDuration(totalSeconds: number) {
 export function TodayScreen() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [todayPlan, setTodayPlan] = useState<DailyPlan | null>(null)
+  const [nextAction, setNextAction] = useState<NextActionSuggestion | null>(null)
   const [focus, setFocus] = useState<FocusSession | null>(null)
   const [loading, setLoading] = useState(true)
   const [planning, setPlanning] = useState(false)
@@ -27,14 +28,19 @@ export function TodayScreen() {
 
   const refresh = useCallback(async () => {
     try {
-      const [nextTasks, nextFocus, nextPlan] = await Promise.all([
+      const [nextTasks, nextFocus, nextPlan, suggestion] = await Promise.all([
         bridge.tasksListOpen(),
         bridge.tasksCurrentFocus(),
         bridge.plannerToday(localDateKey()),
+        bridge.plannerNextAction(
+          localDateKey(),
+          new Date().getTimezoneOffset(),
+        ),
       ])
       setTasks(nextTasks)
       setFocus(nextFocus)
       setTodayPlan(nextPlan)
+      setNextAction(suggestion)
       setError(null)
     } catch (reason) {
       setError(String(reason))
@@ -52,6 +58,12 @@ export function TodayScreen() {
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(timer)
   }, [focus])
+
+  useEffect(() => {
+    if (!todayPlan) return
+    const timer = window.setInterval(() => void refresh(), 60_000)
+    return () => window.clearInterval(timer)
+  }, [todayPlan, refresh])
 
   const runAction = async (
     taskId: string,
@@ -163,6 +175,7 @@ export function TodayScreen() {
   const elapsedSeconds = focus
     ? Math.max(0, Math.floor((now - focus.startTime) / 1000))
     : 0
+  const suggestedTask = nextAction?.task ?? null
 
   return (
     <div className="flex flex-col gap-6">
@@ -258,6 +271,43 @@ export function TodayScreen() {
               {minutesToLabel(todayPlan.overflowMinutes)} de tâches dépassent la
               capacité. Elles restent visibles comme tâches à reporter, sans
               être supprimées.
+            </p>
+          )}
+          {suggestedTask && (
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-accent/30 bg-accent/5 px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-xs font-medium uppercase tracking-wide text-accent">
+                  Prochaine action · créneau de{' '}
+                  {minutesToLabel(nextAction?.availableMinutes ?? 0)}
+                </p>
+                <p className="mt-1 truncate text-sm font-medium">
+                  {suggestedTask.title}
+                </p>
+                <p className="mt-1 text-xs text-text-muted">
+                  {minutesToLabel(suggestedTask.estimatedMinutes)} estimées ·
+                  score {Math.round(suggestedTask.score * 100)}
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={focus !== null || busyTaskId !== null}
+                onClick={() =>
+                  void runAction(suggestedTask.taskId, () =>
+                    bridge.tasksStartFocus(suggestedTask.taskId),
+                  )
+                }
+                className="inline-flex items-center gap-2 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90 disabled:opacity-40"
+              >
+                <Play className="h-3.5 w-3.5" />
+                Démarrer
+              </button>
+            </div>
+          )}
+          {!suggestedTask && nextAction?.reason === 'NOTHING_FITS' && (
+            <p className="mb-3 rounded-md border border-border px-3 py-2 text-xs text-text-muted">
+              Aucune tâche ne tient dans le prochain créneau (
+              {minutesToLabel(nextAction.availableMinutes)} disponibles, buffer
+              déduit). Elles restent dans la file.
             </p>
           )}
           {loading ? (

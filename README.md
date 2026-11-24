@@ -10,8 +10,9 @@ realistic daily execution.
 > prioritizes work, places deep-work tasks into time blocks, preserves a
 > workload reserve, and reports overflow and unresolved dependencies. A
 > deterministic autonomy rule table (R01–R24) with settings overrides now backs
-> the audit trail. Flexible queue optimization, the approval/undo workflow,
-> automatic AI organization, and activity observation remain.
+> the audit trail, and the flexible queue suggests the best task that fits the
+> next gap. Adaptive replanning, the approval/undo workflow, automatic AI
+> organization, and activity observation remain.
 > Architecture contract: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 
 ## Stack

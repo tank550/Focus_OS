@@ -15,6 +15,7 @@ use crate::state::AppState;
 
 const MIN_RESERVE_MINUTES: u32 = 30;
 const MIN_BUFFER_MINUTES: u32 = 10;
+const GAP_TRAILING_BUFFER_MINUTES: u32 = 5;
 const DEADLINE_URGENCY_WINDOW_MS: i64 = 72 * 60 * 60 * 1000;
 const MILLIS_PER_MINUTE: i64 = 60_000;
 
@@ -59,6 +60,19 @@ pub struct ScheduledBlock {
     pub duration_minutes: u32,
     pub priority: u16,
     pub active: bool,
+}
+
+/// Answer to "what fits the gap before the next committed block?".
+///
+/// A task larger than the gap stays queued; this never fabricates a slot.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NextActionSuggestion {
+    pub gap_minutes: u32,
+    pub available_minutes: u32,
+    pub task: Option<PlannedTask>,
+    /// `NO_PLAN`, `FOCUS_ACTIVE`, `EMPTY_QUEUE`, `WORKDAY_OVER`, `NOTHING_FITS`.
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -301,6 +315,79 @@ pub fn plan_day(
     })
 }
 
+/// Suggest the highest-value queued task that fits the gap before the next
+/// committed block (or the end of the working day).
+pub fn next_action(
+    state: &AppState,
+    plan_date: &str,
+    utc_offset_minutes: i32,
+) -> Result<NextActionSuggestion, PlannerError> {
+    validate_date(plan_date)?;
+    if !(-14 * 60..=14 * 60).contains(&utc_offset_minutes) {
+        return Err(PlannerError::InvalidUtcOffset);
+    }
+    let schedule = load_schedule_settings(state)?;
+    let working_end = parse_clock(&schedule.working_hours_end)?;
+    let workday_end = epoch_minute_for_local_time(plan_date, working_end, utc_offset_minutes)?
+        .saturating_mul(MILLIS_PER_MINUTE);
+
+    let conn = state.conn()?;
+    let plan_record = PlannerRepo::active_plan(&conn, plan_date)?;
+    let active_task_id = TasksRepo::active_session(&conn)?.map(|session| session.task_id);
+    drop(conn);
+
+    let now = UtcMillis::now().0;
+    let unavailable = |reason: &str| NextActionSuggestion {
+        gap_minutes: 0,
+        available_minutes: 0,
+        task: None,
+        reason: Some(reason.to_string()),
+    };
+
+    let Some(plan) = plan_record.map(plan_from_record).transpose()? else {
+        return Ok(unavailable("NO_PLAN"));
+    };
+    if active_task_id.is_some() {
+        return Ok(unavailable("FOCUS_ACTIVE"));
+    }
+    if plan
+        .scheduled_blocks
+        .iter()
+        .any(|block| block.active && block.scheduled_start <= now && now < block.scheduled_end)
+    {
+        return Ok(unavailable("FOCUS_ACTIVE"));
+    }
+    if plan.tasks.is_empty() {
+        return Ok(unavailable("EMPTY_QUEUE"));
+    }
+    if now >= workday_end {
+        return Ok(unavailable("WORKDAY_OVER"));
+    }
+
+    let next_block_start = plan
+        .scheduled_blocks
+        .iter()
+        .map(|block| block.scheduled_start)
+        .filter(|start| *start > now)
+        .min();
+    let gap_end = next_block_start.unwrap_or(workday_end).min(workday_end);
+    let gap_minutes = ((gap_end - now) / MILLIS_PER_MINUTE).max(0) as u32;
+    let available_minutes = gap_minutes.saturating_sub(GAP_TRAILING_BUFFER_MINUTES);
+    let task =
+        select_best_for_gap(&plan.tasks, available_minutes, active_task_id.as_deref()).cloned();
+    let reason = if task.is_none() {
+        Some("NOTHING_FITS".to_string())
+    } else {
+        None
+    };
+    Ok(NextActionSuggestion {
+        gap_minutes,
+        available_minutes,
+        task,
+        reason,
+    })
+}
+
 fn plan_from_record(record: DailyPlanRecord) -> Result<DailyPlan, PlannerError> {
     let feasibility = record
         .feasibility
@@ -374,6 +461,28 @@ fn to_planned_task(task: &PlanningTaskRecord, now: i64) -> PlannedTask {
         deadline: task.deadline,
         fits_capacity: false,
     }
+}
+
+fn select_best_for_gap<'a>(
+    tasks: &'a [PlannedTask],
+    available_minutes: u32,
+    active_task_id: Option<&str>,
+) -> Option<&'a PlannedTask> {
+    tasks
+        .iter()
+        .filter(|task| task.fits_capacity && task.estimated_minutes <= available_minutes)
+        .filter(|task| active_task_id != Some(task.task_id.as_str()))
+        .max_by(|left, right| {
+            left.score
+                .total_cmp(&right.score)
+                .then_with(|| {
+                    right
+                        .deadline
+                        .unwrap_or(i64::MAX)
+                        .cmp(&left.deadline.unwrap_or(i64::MAX))
+                })
+                .then_with(|| right.task_id.cmp(&left.task_id))
+        })
 }
 
 fn task_score(task: &PlanningTaskRecord, now: i64) -> f64 {
@@ -755,6 +864,75 @@ mod tests {
             Err(PlannerError::InvalidDate)
         ));
         assert!(today(&state, "not-a-date").is_err());
+
+        drop(state);
+        let _ = std::fs::remove_dir_all(directory);
+    }
+
+    fn planned(
+        task_id: &str,
+        estimated_minutes: u32,
+        score: f64,
+        deadline: Option<i64>,
+        fits_capacity: bool,
+    ) -> PlannedTask {
+        PlannedTask {
+            task_id: task_id.to_string(),
+            title: task_id.to_string(),
+            description: None,
+            priority: 50,
+            estimated_minutes,
+            score,
+            deadline,
+            fits_capacity,
+        }
+    }
+
+    #[test]
+    fn gap_fit_prefers_highest_score_among_tasks_that_fit() {
+        let tasks = vec![
+            planned("too-big", 90, 0.95, None, true),
+            planned("fits-a", 20, 0.40, None, true),
+            planned("fits-b", 25, 0.60, None, true),
+            planned("overflow", 10, 1.00, None, false),
+            planned("active", 15, 0.99, None, true),
+        ];
+
+        let best = select_best_for_gap(&tasks, 30, Some("active")).unwrap();
+        assert_eq!(best.task_id, "fits-b");
+    }
+
+    #[test]
+    fn gap_fit_breaks_score_ties_by_earliest_deadline() {
+        let tasks = vec![
+            planned("later", 20, 0.5, Some(2_000), true),
+            planned("sooner", 20, 0.5, Some(1_000), true),
+        ];
+
+        assert_eq!(
+            select_best_for_gap(&tasks, 30, None).unwrap().task_id,
+            "sooner"
+        );
+    }
+
+    #[test]
+    fn gap_fit_returns_none_when_nothing_fits() {
+        let tasks = vec![planned("too-big", 60, 0.9, None, true)];
+        assert!(select_best_for_gap(&tasks, 30, None).is_none());
+    }
+
+    #[test]
+    fn next_action_without_a_plan_reports_no_plan() {
+        let directory =
+            std::env::temp_dir().join(format!("focus-os-planner-next-{}", EntityId::new()));
+        let database_path = directory.join("test.db");
+        let pool = crate::infrastructure::db::open(&database_path).unwrap();
+        let state = AppState::new(pool, database_path);
+
+        let suggestion = next_action(&state, "2026-11-13", 0).unwrap();
+        assert_eq!(suggestion.reason.as_deref(), Some("NO_PLAN"));
+        assert!(suggestion.task.is_none());
+        assert_eq!(suggestion.gap_minutes, 0);
 
         drop(state);
         let _ = std::fs::remove_dir_all(directory);

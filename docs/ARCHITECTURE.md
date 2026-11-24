@@ -419,6 +419,10 @@ select_best_for_gap(gap_minutes, now_context):
 The queue answers "what fits the next 25 minutes?" — it never fabricates a time
 slot for something that doesn't fit. Tasks larger than the next gap stay QUEUED.
 Splitting is applied **only** when `is_splittable` and a fair chunk fits.
+`planner_next_action` implements this selection locally: it computes the gap
+until the next committed block (or the end of the working day), deducts a
+trailing buffer, and returns the highest-scoring queued task that fits. Today
+surfaces the result as a one-click "next action" prompt.
 
 ### 6.8 Feasibility & overflow
 

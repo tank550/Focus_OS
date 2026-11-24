@@ -236,6 +236,13 @@ export interface ScheduledBlock {
   active: boolean
 }
 
+export interface NextActionSuggestion {
+  gapMinutes: number
+  availableMinutes: number
+  task: PlannedTask | null
+  reason: string | null
+}
+
 export interface FocusSession {
   id: string
   taskId: string

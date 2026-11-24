@@ -19,3 +19,12 @@ pub fn planner_plan_day(
 ) -> Result<DailyPlan, String> {
     planner::plan_day(&state, &plan_date, utc_offset_minutes).map_err(|error| error.to_string())
 }
+
+#[tauri::command]
+pub fn planner_next_action(
+    state: State<'_, AppState>,
+    plan_date: String,
+    utc_offset_minutes: i32,
+) -> Result<planner::NextActionSuggestion, String> {
+    planner::next_action(&state, &plan_date, utc_offset_minutes).map_err(|error| error.to_string())
+}

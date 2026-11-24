@@ -19,7 +19,7 @@ honestly.
 - [ ] EDD pre-pass for hard deadlines (currently score-based)
 - [ ] Replan protocol: freeze horizon + diff + scenario engines A/B/E/F
 - [ ] Split rules for `is_splittable` tasks
-- [ ] Gap-fit "start next" selection for the flexible queue
+- [x] Gap-fit "start next" selection for the flexible queue
 
 ## Delivered in this phase
 
@@ -28,12 +28,15 @@ honestly.
   `flexible_queue_items`; overflow and blocked lists are explicit.
 - `Today` renders blocks, the flexible queue, overflow, and blocked tasks, and
   can start/pause/complete a focus session.
-- Replanning keeps a running block even when the rest of the day is recomputed.
+- `planner::next_action` picks the highest-scoring queued task that fits the
+  gap before the next block (5-minute trailing buffer), or reports that
+  nothing fits. Replanning keeps a running block even when the rest of the day
+  is recomputed.
 
 ## Known gaps
 
 - The planner treats the working day as one continuous span; meetings, breaks,
   and buffers are not modelled yet.
 - Adaptive replanning and plan diffs are not implemented.
-- Queue selection is a ranked list; it does not yet answer "what fits the next
-  gap?".
+- Queue selection is a ranked list plus gap fitting; energy/context-aware
+  optimization is still ahead.
