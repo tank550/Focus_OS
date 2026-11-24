@@ -5,7 +5,8 @@ adaptive autonomy. Turns scattered thoughts and ambitions into consistent,
 realistic daily execution.
 
 > **Status:** Phases 2–3 — in progress. Inbox, project management, a visible
-> goal Sidecar, and focus sessions are implemented. The local daily planner
+> goal Sidecar, focus sessions, and a first local activity analytics view are
+> implemented. The local daily planner
 > prioritizes work, places deep-work tasks into time blocks, preserves a
 > workload reserve, and reports overflow and unresolved dependencies. Flexible
 > queue optimization, automatic AI organization, and activity observation

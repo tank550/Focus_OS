@@ -1,3 +1,4 @@
+pub mod analytics_repo;
 pub mod autonomy_repo;
 pub mod goals_repo;
 pub mod inbox_repo;

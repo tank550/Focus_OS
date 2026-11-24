@@ -877,7 +877,10 @@ on the session. Pomodoro optional (settings), never forced.
 - **Analytics:** time distribution by project/type; execution history
   (sessions); planning accuracy (est vs actual); goal progress trend;
   recurring blockers (from daily reviews); autonomy audit timeline
-  (filterable by level/status/actor).
+  (filterable by level/status/actor). The first implemented analytics view
+  covers the last 30 days of focus time, completed tasks, project distribution,
+  and recent focus sessions; planning accuracy, goal trends, reviews, and the
+  autonomy audit timeline remain on the roadmap.
 - **Settings:** AI · Schedule · Notifications · Autonomy · Discord · Appearance
   · Data (migrations, export/backup, restore). Autonomy screen renders the
   policy table with level dropdowns (escalate-only for R20+).

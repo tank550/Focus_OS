@@ -243,6 +243,30 @@ export interface FocusSession {
   startTime: number
 }
 
+export interface AnalyticsProjectFocusTime {
+  projectId: string | null
+  projectName: string
+  focusMinutes: number
+}
+
+export interface AnalyticsFocusSession {
+  id: string
+  taskTitle: string
+  projectName: string | null
+  startTime: number
+  durationMinutes: number
+}
+
+export interface AnalyticsSummary {
+  periodStart: number
+  focusMinutes: number
+  sessionCount: number
+  averageSessionMinutes: number
+  completedTasks: number
+  projectFocusTimes: AnalyticsProjectFocusTime[]
+  recentSessions: AnalyticsFocusSession[]
+}
+
 export interface AiSettings {
   enabled: boolean
   provider: 'nim' | 'mock'
